@@ -288,7 +288,7 @@
     fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { if (d && d.items) { NEWS = d; if (tab === 'news') renderNews(); } }).catch(function () {});
   }
-  var NEWS_CHIPS = [['all', 'All'], ['cb', '★ Central banks'], ['USD', 'USD'], ['EUR', 'EUR'], ['JPY', 'JPY'], ['GBP', 'GBP'], ['AUD', 'AUD'], ['NZD', 'NZD'], ['SGD', 'SGD']];
+  var NEWS_CHIPS = [['all', 'All'], ['cb', '★ Central banks'], ['sg', '🇸🇬 SG'], ['USD', 'USD'], ['EUR', 'EUR'], ['JPY', 'JPY'], ['GBP', 'GBP'], ['AUD', 'AUD'], ['NZD', 'NZD'], ['SGD', 'SGD']];
   function renderNewsChips() {
     $('nchips').innerHTML = NEWS_CHIPS.map(function (c) {
       return '<button class="chip" type="button" data-n="' + c[0] + '" aria-pressed="' + (newsCcy === c[0]) + '">' + esc(c[1]) + '</button>';
@@ -299,7 +299,8 @@
     var q = $('q').value.trim().toLowerCase();
     var list = NEWS.items.filter(function (n) {
       if (newsCcy === 'cb' && !n.cb) return false;
-      if (newsCcy !== 'all' && newsCcy !== 'cb' && (n.ccy || []).indexOf(newsCcy) < 0) return false;
+      if (newsCcy === 'sg' && !n.sg) return false;
+      if (newsCcy !== 'all' && newsCcy !== 'cb' && newsCcy !== 'sg' && (n.ccy || []).indexOf(newsCcy) < 0) return false;
       return !q || (n.title + ' ' + n.src).toLowerCase().indexOf(q) >= 0;
     });
     var html = '<div class="nmeta">Updated ' + esc(NEWS.updated.slice(11)) + ' Singapore · ' + list.length + ' headlines · tap to open</div>', lastDay = '';
@@ -437,6 +438,17 @@
     }).catch(function () {});
   }
   var CB_RE = /rate|monetary policy|policy statement|press conference|statement/i;
+  // actual vs consensus: above / below / in line (tolerance depends on the units)
+  function num(v) { var m = /(-?\d+(?:\.\d+)?)\s*([%KMBT])?/i.exec(String(v || '').replace(/,/g, '')); return m ? { n: +m[1], u: (m[2] || '').toUpperCase() } : null; }
+  function surprise(a, f) {
+    var x = num(a), y = num(f);
+    if (!x || !y) return null;
+    var tol = x.u === 'K' ? 5 : x.u === '%' ? 0.05 : Math.max(0.005 * Math.abs(y.n), 0.01);
+    var d = x.n - y.n;
+    if (d > tol) return { mark: '▲', cls: 'sup', word: 'above consensus' };
+    if (d < -tol) return { mark: '▼', cls: 'sdn', word: 'below consensus' };
+    return { mark: '=', cls: 'sin', word: 'in line with consensus' };
+  }
   function financeItems() {
     var live = finLive.items || [], st = (typeof FIN_STATIC === 'undefined') ? [] : FIN_STATIC;
     var liveDates = live.map(function (x) { return x.date; }).sort();
@@ -454,6 +466,7 @@
           if (l.kind === 'cb' || CB_RE.test(l.title)) {
             dropLive[l.id] = 1;
             if (l.forecast && !e.forecast) { e.forecast = l.forecast; e.previous = l.previous; e.liveTitle = l.title; }
+            if (l.actual && !e.actual) { e.actual = l.actual; e.actualSrc = l.actualSrc; }
           }
         });
       }
@@ -461,10 +474,14 @@
     });
     live.forEach(function (l) {
       if (dropLive[l.id]) return;
-      out.push({ id: 'fin-' + l.id, date: l.date, time: l.time, ccy: l.ccy, kind: l.kind, raw: l.title, forecast: l.forecast, previous: l.previous, src: 'live' });
+      out.push({ id: 'fin-' + l.id, date: l.date, time: l.time, ccy: l.ccy, kind: l.kind, raw: l.title, forecast: l.forecast, previous: l.previous, actual: l.actual, actualSrc: l.actualSrc, src: 'live' });
     });
     return out.map(function (e) {
-      var fp = [e.forecast ? 'F ' + e.forecast : '', e.previous ? 'P ' + e.previous : ''].filter(Boolean).join(' · ');
+      var sp = e.actual ? surprise(e.actual, e.forecast) : null;
+      var fp = [e.actual ? 'A ' + e.actual + (sp ? ' ' + sp.mark : '') : '', e.forecast ? 'F ' + e.forecast : '', e.previous ? 'P ' + e.previous : ''].filter(Boolean).join(' · ');
+      e.noteHTML = [e.actual ? '<span class="' + (sp ? sp.cls : '') + '">A ' + esc(e.actual) + (sp ? ' ' + sp.mark : '') + '</span>' : '',
+        e.forecast ? 'F ' + esc(e.forecast) : '', e.previous ? 'P ' + esc(e.previous) : ''].filter(Boolean).join(' · ');
+      e.surprise = sp ? sp.word : '';
       e.title = e.ccy + ' ' + e.raw + (e.check ? ' (check)' : '');
       e.note = fp; e.place = ''; e.cat = 'finance'; e.finance = true; e.emoji = e.kind === 'cb' ? '🏦' : '📊';
       return e;
@@ -557,7 +574,7 @@
               '<span class="tm">' + (i.time ? esc(GC.fmtTime(i.time)) : '') + '</span>' +
               '<span class="emo" aria-hidden="true">' + (i.emoji || c.emoji) + '</span>' +
               '<span class="t">' + (i.finance ? (i.kind === 'cb' ? '<span class="star">★</span> ' : '') + '<b>' + esc(i.ccy) + '</b> ' + esc(i.raw) + (i.check ? '<span class="pl"> (check)</span>' : '') : esc(i.title) + (i.age ? ' (' + i.age + ')' : '') + (i.recurring ? '<span class="pl"> ↻</span>' : '')) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.isDue ? '<span class="due">' + (i.paid ? 'PAID' : 'DUE') + '</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
-              (i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span>' +
+              (i.noteHTML ? '<span class="note">' + i.noteHTML + '</span>' : i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span>' +
               '<span class="cd">' + (k === 0 && days > 0 ? days + 'D' : '') + '</span></button></li>';
           }).join('') + '</ul>';
       });
@@ -800,11 +817,14 @@
     if (!f) return;
     var rows = [['When', longLabel(f.date) + ' ' + f.date.slice(0, 4) + (f.time ? ', ' + GC.fmtTime(f.time) + ' Singapore' : ', time not fixed')],
       ['Currency', f.ccy]];
+    if (f.actual) rows.push(['Actual', f.actual + (f.surprise ? ' (' + f.surprise + ')' : '')]);
     if (f.forecast) rows.push(['Forecast', f.forecast]);
     if (f.previous) rows.push(['Previous', f.previous]);
     openSheet('<h2>' + f.emoji + ' ' + esc(f.ccy + ' ' + f.raw) + '</h2><div class="kv">' +
       rows.map(function (r) { return '<span>' + r[0] + '</span><span>' + esc(r[1]) + '</span>'; }).join('') + '</div>' +
       (f.info ? '<p class="small">' + esc(f.info) + '</p>' : '') +
+      (f.actual ? '<p class="small">' + (f.actualSrc === 'bls' ? 'Actual: official figure from the US Bureau of Labor Statistics (calculated from the published index, so the last decimal can differ from the headline).'
+        : 'Actual: taken from the next release\'s "previous" figure, so it may include revisions.') + '</p>' : '') +
       '<p class="small">' + (f.src === 'official' ? 'Date from the official published schedule.' + (f.liveTitle ? ' Forecast from the live calendar (' + esc(f.liveTitle) + ').' : '')
         : 'From the live high-impact calendar' + (finLive.updated ? ', updated ' + esc(finLive.updated) + ' Singapore time' : '') + '. Forecasts are market consensus and can change.') + '</p>' +
       '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
@@ -1056,7 +1076,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f6415fab30af</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f412c4bd524b</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
