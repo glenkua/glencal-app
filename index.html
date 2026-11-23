@@ -40,7 +40,7 @@ input, textarea, select { font-family: var(--mono); }
 .bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 6; background: var(--panel); border-bottom: 1px solid var(--line); }
 .bar .in { display: flex; flex-direction: column; gap: 0.45rem; padding-block: 0.5rem; padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right: max(0.6rem, env(safe-area-inset-right, 0px)); }
 .clocks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.3rem; }
-.ck { display: flex; justify-content: space-between; align-items: baseline; gap: 0.3rem; min-width: 0; padding: 0.3rem 0.45rem; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; }
+.ck { display: flex; justify-content: space-between; align-items: baseline; gap: 0.3rem; min-width: 0; padding: 0.3rem 0.45rem; background: linear-gradient(180deg, #1d1d1d 0%, #0b0b0b 100%); border: 1px solid #303030; border-radius: 4px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), 0 2px 0 #000, 0 3px 6px rgba(0,0,0,0.55); }
 .ck .c { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ck .h { font-size: 1.25rem; font-weight: 800; color: var(--muted); white-space: nowrap; }
 .ck .o { font-size: 0.62rem; font-weight: 700; color: var(--muted); margin-left: 0.1rem; vertical-align: top; }
@@ -49,9 +49,6 @@ input, textarea, select { font-family: var(--mono); }
 .ck.home { border-color: var(--cyan); }
 .ck.home .h, .ck.home .c { color: var(--cyan); }
 .ck.home.open { box-shadow: inset 3px 0 0 var(--amber); }
-.chip.fin { border-color: var(--cyan); }
-.chip.fin[aria-pressed="true"] { color: var(--cyan); background: var(--bg); border-color: var(--cyan); }
-.chip.fin[aria-pressed="true"] .n { color: var(--cyan); }
 .dgrp li.fin .t b { color: var(--cyan); font-weight: 700; }
 /* central bank decisions: the most important ECON events */
 .dgrp li.fin.cb .item { box-shadow: inset 2px 0 0 var(--amber); }
@@ -110,11 +107,14 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .pl { color: var(--muted); }
 .cd { color: var(--muted); font-size: 0.8rem; font-weight: 700; text-align: right; white-space: nowrap; padding-left: 0.3rem; }
 .dgrp li.hol .t { color: var(--muted); }
-.due { display: inline-block; margin-left: 0.35rem; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; color: var(--on-amber); background: var(--amber); padding: 0.05rem 0.3rem; border-radius: 2px; vertical-align: 0.08rem; }
+.due { display: inline-block; margin-left: 0.35rem; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em; color: var(--amber); border: 1px solid color-mix(in srgb, var(--amber) 60%, transparent); padding: 0 0.25rem; border-radius: 2px; vertical-align: 0.08rem; opacity: 0.85; }
+.dgrp li.bill .t, .dgrp li.bill .tm { color: var(--muted); }
+.dgrp li.bill .note { font-size: 0.8rem; opacity: 0.8; }
+.dgrp li.bill .emo { opacity: 0.6; }
 /* bills: a faintly lighter band so they read as separate from your own entries */
 .dgrp li.bill .item { background: color-mix(in srgb, var(--card) 93%, #ffffff); }
 .dgrp li.paid .t { color: var(--muted); text-decoration: line-through; }
-.dgrp li.paid .due { background: var(--line); color: var(--muted); }
+.dgrp li.paid .due { border-color: var(--line); color: var(--muted); }
 .rule { display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; padding: 0.5rem 0.6rem; background: var(--bg); border: 1px solid var(--line); border-left: 2px solid var(--amber); cursor: pointer; text-align: left; width: 100%; color: var(--fg); font-family: var(--mono); font-size: 0.95rem; }
 .rule .small { text-align: right; }
 .arr { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.5rem; background: var(--bg); border: 1px solid var(--line); }
