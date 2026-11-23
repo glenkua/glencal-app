@@ -171,8 +171,8 @@ var GC = (function () {
     { id: 'errands', emoji: '🛍️', name: 'Errands', words: 'haircut|hair|groceries|grocery|collect|collection|pick up|pickup|drop off|delivery|laundry|car service|servicing|repair|post office|shopping|buy|return|cleaner|cleaning|renovation|plumber|aircon' },
     { id: 'social', emoji: '👥', name: 'Social', words: 'meet|meetup|catch up|catchup|hangout|hang out|visit|movie|movies|concert|show|game|karaoke|ktv|gathering|playdate|church|wedding dinner' },
     { id: 'holiday', emoji: '🇸🇬', name: 'SG holidays', words: '' },
-    { id: 'finance', emoji: '📈', name: 'Finance', words: '' },
-    { id: 'bills', emoji: '💳', name: 'Bills', words: '' },
+    { id: 'finance', emoji: '📈', name: 'ECON', words: '' },
+    { id: 'bills', emoji: '💳', name: 'Finances', words: '' },
     { id: 'other', emoji: '📌', name: 'Other', words: '' }
   ];
   CATS.forEach(function (c) { c.re = c.words ? new RegExp("(^|[^a-z0-9'])(" + c.words + ")(?=$|[^a-z0-9'])", 'i') : null; });

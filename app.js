@@ -333,19 +333,47 @@
       return !q || [i.title, i.place, i.note, i.src].join(' ').toLowerCase().indexOf(q) >= 0;
     });
   }
+  var ALWAYS = { bills: 1, finance: 1 };   // shown even when empty
+  function chipOrder() {
+    var ids = GC.CATS.map(function (c) { return c.id; });
+    var def = ['bills', 'finance'].concat(ids.filter(function (id) { return !ALWAYS[id]; }));
+    var saved = (prefs('chipOrder') || '').split(',').filter(function (id) { return GC.CAT_BY_ID[id]; });
+    def.forEach(function (id) { if (saved.indexOf(id) < 0) saved.push(id); });
+    return saved;
+  }
+  function chipLabel(id) { var c = GC.CAT_BY_ID[id]; return c.emoji + ' ' + c.name; }
   function renderChips() {
     var counts = {};
     var all = allEntries();
     all.forEach(function (i) { var c = catOf(i); counts[c] = (counts[c] || 0) + 1; });
-    if (activeCat !== 'all' && activeCat !== 'finance' && !counts[activeCat]) activeCat = 'all';
+    counts.finance = financeItems().filter(function (x) { return x.date >= todayISO; }).length;
+    if (activeCat !== 'all' && !ALWAYS[activeCat] && !counts[activeCat]) activeCat = 'all';
     var html = '<button class="chip" type="button" data-cat="all" aria-pressed="' + (activeCat === 'all') + '">All<span class="n">' + all.length + '</span></button>';
-    GC.CATS.forEach(function (c) {
-      if (!counts[c.id]) return;
-      html += '<button class="chip" type="button" data-cat="' + c.id + '" aria-pressed="' + (activeCat === c.id) + '">' + c.emoji + ' ' + esc(c.name) + '<span class="n">' + counts[c.id] + '</span></button>';
+    chipOrder().forEach(function (id) {
+      if (!counts[id] && !ALWAYS[id]) return;
+      html += '<button class="chip' + (id === 'finance' ? ' fin' : '') + '" type="button" data-cat="' + id + '" aria-pressed="' + (activeCat === id) + '">' +
+        esc(chipLabel(id)) + '<span class="n">' + (counts[id] || 0) + '</span></button>';
     });
-    html += '<button class="chip fin" type="button" data-cat="finance" aria-pressed="' + (activeCat === 'finance') + '">📈 Finance<span class="n">' +
-      financeItems().filter(function (x) { return x.date >= todayISO; }).length + '</span></button>';
     $('chips').innerHTML = html;
+  }
+
+  // ---- hold any category to rearrange the order ----
+  function showArrange() {
+    var order = chipOrder();
+    openSheet('<h2>Arrange categories</h2><p>All always comes first. Categories with nothing in them stay hidden until they have entries.</p>' +
+      order.map(function (id, n) {
+        return '<div class="arr"><span class="lbl">' + esc(chipLabel(id)) + '</span>' +
+          '<button class="btn" type="button" data-act="arr-move" data-id="' + id + '" data-dir="-1"' + (n === 0 ? ' disabled' : '') + ' aria-label="Move up">▲</button>' +
+          '<button class="btn" type="button" data-act="arr-move" data-id="' + id + '" data-dir="1"' + (n === order.length - 1 ? ' disabled' : '') + ' aria-label="Move down">▼</button></div>';
+      }).join('') +
+      '<div class="actions"><button class="btn grow" type="button" data-act="arr-reset">Reset order</button><button class="btn primary" type="button" data-act="close">Done</button></div>');
+  }
+  function moveChip(id, dir) {
+    var order = chipOrder(), i = order.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    order.splice(i, 1); order.splice(j, 0, id);
+    prefs('chipOrder', order.join(','));
+    renderChips(); showArrange();
   }
 
   var shownDates = [];
@@ -358,7 +386,8 @@
     dates.sort();
     shownDates = dates;
     if (!dates.length) {
-      $('list').innerHTML = (q || activeCat !== 'all') ? '<p class="empty">NO MATCHES</p>'
+      $('list').innerHTML = (!q && activeCat === 'bills') ? '<p class="empty">No cards or bills yet. Add them in ··· → Bills &amp; recurring, or import your list.</p>'
+        : (q || activeCat !== 'all') ? '<p class="empty">NO MATCHES</p>'
         : '<p class="empty">Nothing here yet. Tap + ADD and paste any text that has a date in it.</p>';
       return;
     }
@@ -839,7 +868,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b4fc1a297933</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 4e833187f2ff</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -900,8 +929,21 @@
   // =====================================================================
   $('q').addEventListener('input', function () { render(); if (!$('q').value) jumpToday(false); });
   $('jump').addEventListener('click', function () { $('q').value = ''; render(); jumpToday(true); });
+  var holdTimer = null, held = false, hold0 = null;
+  $('chips').addEventListener('pointerdown', function (e) {
+    if (!e.target.closest('[data-cat]')) return;
+    held = false; hold0 = { x: e.clientX, y: e.clientY };
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(function () { held = true; if (navigator.vibrate) navigator.vibrate(10); showArrange(); }, 550);
+  });
+  $('chips').addEventListener('pointermove', function (e) {
+    if (hold0 && (Math.abs(e.clientX - hold0.x) > 8 || Math.abs(e.clientY - hold0.y) > 8)) { clearTimeout(holdTimer); hold0 = null; }
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { $('chips').addEventListener(ev, function () { clearTimeout(holdTimer); hold0 = null; }); });
+  $('chips').addEventListener('contextmenu', function (e) { e.preventDefault(); });
   $('chips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-cat]'); if (!b) return;
+    if (held) { held = false; return; }
     activeCat = b.getAttribute('data-cat'); refresh(); jumpToday(false);
   });
   $('add').addEventListener('click', function () { showPaste(''); });
@@ -942,6 +984,8 @@
     else if (act === 'ask-discard') { pending = null; askHistory.push({ q: '(discard)', a: 'Discarded.' }); showAsk(); }
     else if (act === 'import') showImport();
     else if (act === 'rules') showRules();
+    else if (act === 'arr-move') moveChip(b.getAttribute('data-id'), +b.getAttribute('data-dir'));
+    else if (act === 'arr-reset') { prefs('chipOrder', ''); renderChips(); showArrange(); }
     else if (act === 'rule-edit') showRuleForm(b.getAttribute('data-rule'));
     else if (act === 'rule-save') saveRule(b.getAttribute('data-rule'));
     else if (act === 'rule-del') { if (b.textContent !== 'Tap again to delete') { b.textContent = 'Tap again to delete'; } else { var rd = b.getAttribute('data-rule'); rules = rules.filter(function (r) { return r.id !== rd; }); persist(); refresh(); showRules(); } }
