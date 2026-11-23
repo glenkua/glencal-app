@@ -27,8 +27,9 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
+  var rules = [], paid = {};
   function persist() {
-    var snap = items.slice();
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid) };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -139,7 +140,10 @@
   }
 
   function enterApp(list) {
-    items = list || [];
+    var data = Array.isArray(list) ? { items: list } : (list || {});
+    items = data.items || [];
+    rules = data.rules || [];
+    paid = data.paid || {};
     unlocked = true;
     todayISO = GC.iso(new Date());
     $('lock').hidden = true;
@@ -230,7 +234,54 @@
       return { id: 'hol-' + h.date + '-' + h.title.replace(/\W+/g, ''), date: h.date, title: h.title, time: '', place: '', note: '', cat: 'holiday', est: h.est, holiday: true, src: '' };
     });
   }
-  function allEntries() { return items.concat(holidayItems()); }
+  // ---- Bills & recurring payments: generated from rules, 3 months back to 12 months ahead ----
+  var KIND_LABEL = { statement: 'statement', bill: 'bill', debit: 'auto-debit', check: 'check' };
+  function dayIn(y, m, day) {   // m 0-11; 'last' or a number clamped to the month's length
+    var last = new Date(y, m + 1, 0).getDate();
+    return new Date(y, m, day === 'last' ? last : Math.min(+day, last));
+  }
+  var holidaySet = null;
+  function isBizDay(d) {
+    if (!holidaySet) { holidaySet = {}; (typeof SG_HOLIDAYS === 'undefined' ? [] : SG_HOLIDAYS).forEach(function (h) { holidaySet[h.date] = 1; }); }
+    return d.getDay() !== 0 && d.getDay() !== 6 && !holidaySet[GC.iso(d)];
+  }
+  function shiftBiz(d, mode) {
+    if (mode !== 'earlier' && mode !== 'later') return d;
+    var step = mode === 'later' ? 1 : -1, x = new Date(d);
+    while (!isBizDay(x)) x = GC.addDays(x, step);
+    return x;
+  }
+  function short(d) { var l = dLabel(GC.iso(d)); return l.dow.charAt(0) + l.dow.slice(1).toLowerCase() + ' ' + l.day + ' ' + l.mon.charAt(0) + l.mon.slice(1).toLowerCase(); }
+  function billItems() {
+    var now = new Date(), lo = GC.iso(GC.addDays(now, -90)), hi = GC.iso(GC.addDays(now, 365)), out = [];
+    rules.forEach(function (r) {
+      for (var k = -4; k <= 13; k++) {
+        var base = new Date(now.getFullYear(), now.getMonth() + k, 1), y = base.getFullYear(), m = base.getMonth();
+        var ym = y + '-' + ('0' + (m + 1)).slice(-2);
+        var main = dayIn(y, m, r.day), due = null, orig = null;
+        if (r.dueWhen === 'same' || r.dueWhen === 'next') {
+          orig = dayIn(y, m + (r.dueWhen === 'next' ? 1 : 0), r.dueDay);
+          due = shiftBiz(orig, r.shift);
+        }
+        var mainISO = GC.iso(main);
+        if (mainISO >= lo && mainISO <= hi) {
+          out.push({ id: 'bill-' + r.id + '-' + ym + '-m', date: mainISO, time: '', place: '', cat: 'bills', bill: true, ruleId: r.id,
+            title: r.name + ' ' + KIND_LABEL[r.kind || 'statement'],
+            note: [due ? 'Pay by ' + short(due) : '', r.note || ''].filter(Boolean).join(' · ') });
+        }
+        if (due) {
+          var dueISO = GC.iso(due), id = 'bill-' + r.id + '-' + ym + '-d';
+          if (dueISO >= lo && dueISO <= hi) {
+            out.push({ id: id, date: dueISO, time: '', place: '', cat: 'bills', bill: true, isDue: true, ruleId: r.id, paid: !!paid[id],
+              title: r.name + ' payment',
+              note: [ (r.kind === 'bill' ? 'Bill ' : 'Statement ') + short(main), GC.iso(orig) !== dueISO ? 'moved from ' + short(orig) : ''].filter(Boolean).join(' · ') });
+          }
+        }
+      }
+    });
+    return out;
+  }
+  function allEntries() { return items.concat(holidayItems(), billItems()); }
 
   // ---- Finance tab: official schedules (finance.js) + live high-impact feed (data/finance-live.json) ----
   var finLive = { items: [], updated: '' };
@@ -326,13 +377,13 @@
           list.map(function (i, k) {
             var c = GC.CAT_BY_ID[catOf(i)];
             var days = Math.round((GC.fromISO(d) - GC.fromISO(todayISO)) / 86400000);
-            return '<li' + (i.holiday ? ' class="hol"' : i.finance ? ' class="fin"' : '') + '>' +
-              (i.holiday || i.finance ? '' : '<div class="swipe-del"><button type="button" data-del="' + esc(i.id) + '">DELETE</button></div>') +
+            return '<li' + (i.holiday ? ' class="hol"' : i.finance ? ' class="fin"' : i.paid ? ' class="paid"' : '') + '>' +
+              (i.holiday || i.finance || i.bill ? '' : '<div class="swipe-del"><button type="button" data-del="' + esc(i.id) + '">DELETE</button></div>') +
               '<button class="item" type="button" data-id="' + esc(i.id) + '">' +
               '<span class="dc">' + (k === 0 ? l.day + ' <span class="w">' + l.dow + '</span>' : '') + '</span>' +
               '<span class="tm">' + (i.time ? esc(GC.fmtTime(i.time)) : '') + '</span>' +
               '<span class="emo" aria-hidden="true">' + (i.emoji || c.emoji) + '</span>' +
-              '<span class="t">' + (i.finance ? '<b>' + esc(i.ccy) + '</b> ' + esc(i.raw) + (i.check ? '<span class="pl"> (check)</span>' : '') : esc(i.title)) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
+              '<span class="t">' + (i.finance ? '<b>' + esc(i.ccy) + '</b> ' + esc(i.raw) + (i.check ? '<span class="pl"> (check)</span>' : '') : esc(i.title)) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.isDue ? '<span class="due">' + (i.paid ? 'PAID' : 'DUE') + '</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
               (i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span>' +
               '<span class="cd">' + (k === 0 && days > 0 ? days + 'D' : '') + '</span></button></li>';
           }).join('') + '</ul>';
@@ -384,7 +435,7 @@
   function openSheet(html) { $('sheet').innerHTML = html; $('scrim').hidden = false; }
   function closeSheet() { $('scrim').hidden = true; $('sheet').innerHTML = ''; }
   function catOptions(sel) {
-    return GC.CATS.filter(function (c) { return c.id !== 'holiday' && c.id !== 'finance'; }).map(function (c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + c.emoji + ' ' + esc(c.name) + '</option>'; }).join('');
+    return GC.CATS.filter(function (c) { return c.id !== 'holiday' && c.id !== 'finance' && c.id !== 'bills'; }).map(function (c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + c.emoji + ' ' + esc(c.name) + '</option>'; }).join('');
   }
   function fieldsHTML(i, n) {
     return '<div class="f">' +
@@ -478,6 +529,56 @@
         ? 'Estimated. MOM has not published the ' + h.date.slice(0, 4) + ' dates yet; holidays that follow the lunar or Islamic calendar may move by a day. The official date will replace this once it is announced.'
         : 'Official date from the Ministry of Manpower.') + '</p>' +
       '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
+  }
+  var KIND_NAMES = { statement: 'Card statement', bill: 'Bill', debit: 'Auto-debit (no action needed)', check: 'Check / reminder' };
+  var SHIFT_NAMES = { earlier: 'Move to the business day before', later: 'Move to the business day after', none: 'Keep the date' };
+  function dayOptions(sel) {
+    var h = '';
+    for (var n = 1; n <= 31; n++) h += '<option value="' + n + '"' + (String(sel) === String(n) ? ' selected' : '') + '>' + n + '</option>';
+    return h + '<option value="last"' + (sel === 'last' ? ' selected' : '') + '>Last day</option>';
+  }
+  function opts(map, sel) { return Object.keys(map).map(function (k) { return '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + map[k] + '</option>'; }).join(''); }
+
+  function showBill(id) {
+    var b = billItems().filter(function (x) { return x.id === id; })[0];
+    if (!b) return;
+    var r = rules.filter(function (x) { return x.id === b.ruleId; })[0] || {};
+    openSheet('<h2>💳 ' + esc(b.title) + '</h2><p>' + longLabel(b.date) + ' ' + b.date.slice(0, 4) + '</p>' +
+      (b.note ? '<p class="small">' + esc(b.note) + '</p>' : '') +
+      '<div class="actions">' + '<button class="btn grow" type="button" data-act="rule-edit" data-rule="' + esc(r.id || '') + '">Edit recurring</button>' +
+      '<button class="btn" type="button" data-act="close">Close</button>' +
+      (b.isDue ? '<button class="btn primary" type="button" data-act="bill-paid" data-bill="' + esc(b.id) + '">' + (b.paid ? 'Mark unpaid' : 'Mark paid') + '</button>' : '') +
+      '</div>');
+  }
+  function showRules() {
+    var h = '<h2>Bills &amp; recurring</h2><p>Monthly statements, payment due dates, auto-debits and checks. They show in All and under 💳 Bills, 3 months back to 12 months ahead.</p>';
+    h += rules.length ? rules.map(function (r) {
+      var due = r.dueWhen === 'same' || r.dueWhen === 'next' ? 'due ' + (r.dueDay === 'last' ? 'last day' : r.dueDay) + (r.dueWhen === 'next' ? ' next mth' : '') : '';
+      return '<button class="rule" type="button" data-act="rule-edit" data-rule="' + esc(r.id) + '"><span>' + esc(r.name) + '</span><span class="small">' +
+        esc(KIND_LABEL[r.kind] || '') + ' ' + (r.day === 'last' ? 'last day' : r.day) + (due ? ' · ' + due : '') + '</span></button>';
+    }).join('') : '<p class="small">Nothing yet.</p>';
+    h += '<div class="actions"><button class="btn grow" type="button" data-act="close">Close</button><button class="btn primary" type="button" data-act="rule-edit" data-rule="">Add</button></div>';
+    openSheet(h);
+  }
+  function showRuleForm(id, msg) {
+    var r = rules.filter(function (x) { return x.id === id; })[0] || { id: '', name: '', kind: 'statement', day: 1, dueWhen: 'none', dueDay: 1, shift: 'earlier', note: '' };
+    openSheet('<h2>' + (r.id ? 'Edit recurring' : 'Add recurring') + '</h2>' + (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
+      '<div class="f"><label>Name<input id="r-name" value="' + esc(r.name) + '" placeholder="e.g. UOB card"></label>' +
+      '<div class="two"><label>Type<select id="r-kind">' + opts(KIND_NAMES, r.kind) + '</select></label>' +
+      '<label>Day each month<select id="r-day">' + dayOptions(r.day) + '</select></label></div>' +
+      '<div class="two"><label>Payment due<select id="r-duewhen">' + opts({ none: 'No due date', same: 'Same month', next: 'Next month' }, r.dueWhen) + '</select></label>' +
+      '<label>Due day<select id="r-dueday">' + dayOptions(r.dueDay) + '</select></label></div>' +
+      '<label>If due date is a weekend or SG public holiday<select id="r-shift">' + opts(SHIFT_NAMES, r.shift) + '</select></label>' +
+      '<label>Note (optional)<input id="r-note" value="' + esc(r.note || '') + '" placeholder="e.g. Pay full amount"></label></div>' +
+      '<div class="actions">' + (r.id ? '<button class="btn danger grow" type="button" data-act="rule-del" data-rule="' + esc(r.id) + '">Delete</button>' : '<span class="grow"></span>') +
+      '<button class="btn" type="button" data-act="rules">Back</button><button class="btn primary" type="button" data-act="rule-save" data-rule="' + esc(r.id) + '">Save</button></div>');
+  }
+  function saveRule(id) {
+    var r = { id: id || 'r' + uid(), name: $('r-name').value.trim(), kind: $('r-kind').value, day: $('r-day').value === 'last' ? 'last' : +$('r-day').value,
+      dueWhen: $('r-duewhen').value, dueDay: $('r-dueday').value === 'last' ? 'last' : +$('r-dueday').value, shift: $('r-shift').value, note: $('r-note').value.trim() };
+    if (!r.name) return showRuleForm(id, 'Give it a name, e.g. "UOB card".');
+    rules = rules.filter(function (x) { return x.id !== r.id; }).concat([r]);
+    persist(); refresh(); showRules();
   }
   function showFinance(id) {
     var f = financeItems().filter(function (x) { return x.id === id; })[0];
@@ -730,6 +831,7 @@
   function showMenu() {
     openSheet('<h2>Menu</h2><div class="menu">' +
       '<button class="btn" type="button" data-act="ai-setup">AI on this iPhone</button>' +
+      '<button class="btn" type="button" data-act="rules">Bills &amp; recurring</button>' +
       '<button class="btn" type="button" data-act="hol-toggle">' + (holidaysOn() ? 'Hide' : 'Show') + ' Singapore holidays</button>' +
       '<button class="btn" type="button" data-act="import">Import entries</button>' +
       '<button class="btn" type="button" data-act="export">Export backup</button>' +
@@ -737,7 +839,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f6c2b5f5c87e</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 5a7b7c500c6d</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -747,18 +849,25 @@
   }
   function doImport() {
     var list;
-    try { var d = JSON.parse($('imp').value); list = Array.isArray(d) ? d : (d && d.items); } catch (e) {}
-    if (!Array.isArray(list)) return showImport('That isn\'t a GlenCal backup. Paste the whole text, starting with [ or {.');
+    var newRules = [];
+    try { var d = JSON.parse($('imp').value); list = Array.isArray(d) ? d : (d && (d.items || [])); newRules = (d && d.rules) || []; if (d && d.paid) Object.assign(paid, d.paid); } catch (e) {}
+    newRules = newRules.filter(function (r) { return r && r.name && r.day; }).map(function (r) {
+      return { id: r.id || 'r' + uid(), name: String(r.name), kind: KIND_LABEL[r.kind] ? r.kind : 'statement', day: r.day === 'last' ? 'last' : +r.day,
+        dueWhen: r.dueWhen === 'same' || r.dueWhen === 'next' ? r.dueWhen : 'none', dueDay: r.dueDay === 'last' ? 'last' : +(r.dueDay || 1),
+        shift: SHIFT_NAMES[r.shift] ? r.shift : 'earlier', note: r.note || '' };
+    });
+    if (newRules.length) { var rid = {}; newRules.forEach(function (r) { rid[r.id] = 1; }); rules = rules.filter(function (r) { return !rid[r.id]; }).concat(newRules); }
+    if (!Array.isArray(list) || (!list.length && !newRules.length)) return showImport('That isn\'t a GlenCal backup. Paste the whole text, starting with [ or {.');
     var clean = list.filter(function (x) { return x && x.title && GC.fromISOok(x.date); }).map(function (x) {
       return { id: x.id || uid(), date: x.date, title: String(x.title), time: x.time || '', place: x.place || '', note: x.note || '', cat: x.cat || '', src: x.src || '', added: x.added || '' };
     });
     var byId = {}; clean.forEach(function (x) { byId[x.id] = x; });
     items = items.filter(function (i) { return !byId[i.id]; }).concat(clean);
     persist(); refresh();
-    openSheet('<h2>Imported</h2><p>' + clean.length + ' entries imported.</p><div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
+    openSheet('<h2>Imported</h2><p>' + clean.length + ' entries' + (newRules.length ? ' and ' + newRules.length + ' recurring items' : '') + ' imported.</p><div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
   }
   function doExport() {
-    var json = JSON.stringify(items, null, 1);
+    var json = JSON.stringify({ v: 2, items: items, rules: rules, paid: paid }, null, 1);
     var file = null;
     try { file = new File([json], 'glencal-backup-' + todayISO + '.json', { type: 'application/json' }); } catch (e) {}
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -809,6 +918,7 @@
     var id = b.getAttribute('data-id');
     if (id.indexOf('hol-') === 0) { showHoliday(id); return; }
     if (id.indexOf('fin-') === 0) { showFinance(id); return; }
+    if (id.indexOf('bill-') === 0) { showBill(id); return; }
     showEdit(id);
   });
   $('scrim').addEventListener('click', function (e) { if (e.target === $('scrim') && !askBusy) closeSheet(); });
@@ -831,6 +941,11 @@
     else if (act === 'ask-apply') askApply();
     else if (act === 'ask-discard') { pending = null; askHistory.push({ q: '(discard)', a: 'Discarded.' }); showAsk(); }
     else if (act === 'import') showImport();
+    else if (act === 'rules') showRules();
+    else if (act === 'rule-edit') showRuleForm(b.getAttribute('data-rule'));
+    else if (act === 'rule-save') saveRule(b.getAttribute('data-rule'));
+    else if (act === 'rule-del') { if (b.textContent !== 'Tap again to delete') { b.textContent = 'Tap again to delete'; } else { var rd = b.getAttribute('data-rule'); rules = rules.filter(function (r) { return r.id !== rd; }); persist(); refresh(); showRules(); } }
+    else if (act === 'bill-paid') { var bid = b.getAttribute('data-bill'); if (paid[bid]) delete paid[bid]; else paid[bid] = 1; persist(); refresh(); showBill(bid); }
     else if (act === 'hol-toggle') { prefs('holidays', holidaysOn() ? 'off' : 'on'); refresh(); showMenu(); }
     else if (act === 'do-import') doImport();
     else if (act === 'export') doExport();

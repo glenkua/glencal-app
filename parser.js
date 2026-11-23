@@ -172,6 +172,7 @@ var GC = (function () {
     { id: 'social', emoji: '👥', name: 'Social', words: 'meet|meetup|catch up|catchup|hangout|hang out|visit|movie|movies|concert|show|game|karaoke|ktv|gathering|playdate|church|wedding dinner' },
     { id: 'holiday', emoji: '🇸🇬', name: 'SG holidays', words: '' },
     { id: 'finance', emoji: '📈', name: 'Finance', words: '' },
+    { id: 'bills', emoji: '💳', name: 'Bills', words: '' },
     { id: 'other', emoji: '📌', name: 'Other', words: '' }
   ];
   CATS.forEach(function (c) { c.re = c.words ? new RegExp("(^|[^a-z0-9'])(" + c.words + ")(?=$|[^a-z0-9'])", 'i') : null; });
