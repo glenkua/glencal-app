@@ -177,12 +177,12 @@
   // (weekdays, local time, lunch breaks excluded; exchange holidays are not accounted for).
   // =====================================================================
   var CLOCKS = [
-    { c: 'WLG', tz: 'Pacific/Auckland', s: [[600, 1005]], x: 'NZX 10:00-16:45' },
-    { c: 'SYD', tz: 'Australia/Sydney', s: [[600, 960]], x: 'ASX 10:00-16:00' },
-    { c: 'TYO', tz: 'Asia/Tokyo', s: [[540, 690], [750, 930]], x: 'TSE 9:00-11:30, 12:30-15:30' },
-    { c: 'SG/HK', tz: 'Asia/Singapore', s: [[540, 720], [780, 1020]], x: 'SGX 9:00-12:00, 13:00-17:00' },
-    { c: 'LON', tz: 'Europe/London', s: [[480, 990]], x: 'LSE 8:00-16:30' },
-    { c: 'NYC', tz: 'America/New_York', s: [[570, 960]], x: 'NYSE 9:30-16:00' }
+    { c: 'WELLINGTON', tz: 'Pacific/Auckland', s: [[600, 1005]], x: 'NZX 10:00-16:45' },
+    { c: 'SYDNEY', tz: 'Australia/Sydney', s: [[600, 960]], x: 'ASX 10:00-16:00' },
+    { c: 'TOKYO', tz: 'Asia/Tokyo', s: [[540, 690], [750, 930]], x: 'TSE 9:00-11:30, 12:30-15:30' },
+    { c: 'SG·HK', tz: 'Asia/Singapore', s: [[540, 720], [780, 1020]], x: 'SGX 9:00-12:00, 13:00-17:00' },
+    { c: 'LONDON', tz: 'Europe/London', s: [[480, 990]], x: 'LSE 8:00-16:30' },
+    { c: 'NEW YORK', tz: 'America/New_York', s: [[570, 960]], x: 'NYSE 9:30-16:00' }
   ];
   var tzFmt = {};
   function zoned(tz, now) {
@@ -675,7 +675,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 7c143d36cee3</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 25adfb41c38c</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
