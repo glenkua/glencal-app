@@ -98,7 +98,11 @@
       '<button class="btn primary" id="lk-unlock" type="button">' + (pw ? 'UNLOCK' : 'UNLOCK WITH FACE ID') + '</button>' +
       '<button class="btn link" id="lk-rec" type="button">Use recovery code</button>');
     $('lk-unlock').onclick = async function () {
-      try { enterApp(await Vault.unlock(pw ? $('lk-p').value : undefined)); }
+      try {
+        var list = await Vault.unlock(pw ? $('lk-p').value : undefined);
+        if (prefs('lock') !== 'on') await Vault.rekey('device');   // Face ID lock is off: stop asking from now on
+        enterApp(list);
+      }
       catch (e) { showUnlock(friendlyError(e)); }
     };
     if (pw) $('lk-p').onkeydown = function (e) { if (e.key === 'Enter') $('lk-unlock').click(); };
@@ -121,6 +125,17 @@
       } catch (e) { showRecoveryEntry(friendlyError(e)); }
     };
     $('lk-back').onclick = function () { showUnlock(); };
+  }
+
+  function showLockOn(msg) {
+    lockScreen('<p>Turn on the lock: GlenCal will ask for Face ID (or a passphrase) when it opens and after 30 seconds in the background.</p>' +
+      (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
+      (Vault.passkeySupported() ? '<button class="btn primary" id="lk-passkey" type="button">USE FACE ID</button>' : '') +
+      '<button class="btn link" id="lk-pw" type="button">Use a passphrase instead</button>' +
+      '<button class="btn link" id="lk-cancel" type="button">Cancel</button>');
+    if ($('lk-passkey')) $('lk-passkey').onclick = function () { doCreate('passkey', null, true); };
+    $('lk-pw').onclick = function () { showPassphraseSetup('', true); };
+    $('lk-cancel').onclick = function () { prefs('lock', 'off'); $('lock').hidden = true; document.body.classList.remove('covered'); };
   }
 
   function enterApp(list) {
@@ -146,11 +161,12 @@
 
   var hiddenAt = 0;
   document.addEventListener('visibilitychange', function () {
+    var locking = Vault.method() !== 'device';
     if (document.hidden) {
       hiddenAt = Date.now();
-      document.body.classList.add('covered');          // hide content from the app switcher
+      if (locking) document.body.classList.add('covered');          // hide content from the app switcher
     } else {
-      if (unlocked && Date.now() - hiddenAt > LOCK_AFTER_MS) lockNow();
+      if (locking && unlocked && Date.now() - hiddenAt > LOCK_AFTER_MS) lockNow();
       else if (unlocked) document.body.classList.remove('covered');
       if (unlocked && GC.iso(new Date()) !== todayISO) { todayISO = GC.iso(new Date()); setClock(); refresh(); }
     }
@@ -594,9 +610,11 @@
       '<button class="btn" type="button" data-act="ai-setup">AI on this iPhone</button>' +
       '<button class="btn" type="button" data-act="import">Import entries</button>' +
       '<button class="btn" type="button" data-act="export">Export backup</button>' +
-      '<button class="btn" type="button" data-act="lock">Lock now</button>' +
+      (Vault.method() === 'device'
+        ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
+        : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.<br>Version 662780ea70fe</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b5a07902563b</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -690,6 +708,8 @@
     else if (act === 'do-import') doImport();
     else if (act === 'export') doExport();
     else if (act === 'lock') lockNow();
+    else if (act === 'lock-off') { prefs('lock', 'off'); Vault.rekey('device').then(showMenu, function (e) { notice('Could not turn off the lock: ' + e.message); }); }
+    else if (act === 'lock-on') { closeSheet(); prefs('lock', 'on'); showLockOn(); }
     else if (act === 'update') installUpdate();
     else if (act === 'jump') { var day = b.getAttribute('data-day'); closeSheet(); scrollToEl($('d-' + day), true); }
     else if (act === 'jump-today') { closeSheet(); $('q').value = ''; render(); jumpToday(true); }
@@ -699,6 +719,11 @@
   // =====================================================================
   // Start
   // =====================================================================
-  Vault.status().then(function (st) { if (st === 'new') showSetup(); else showUnlock(); })
+  Vault.status().then(async function (st) {
+    if (st === 'new' && prefs('lock') !== 'on') { await Vault.create('device'); return enterApp(await Vault.read()); }
+    if (st === 'new') return showSetup();
+    if (Vault.method() === 'device') return enterApp(await Vault.unlock());
+    showUnlock();
+  })
     .catch(function (e) { lockScreen('<div class="err">GlenCal couldn\'t open its storage: ' + esc(e.message || e) + '</div>'); });
 })();

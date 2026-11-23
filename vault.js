@@ -117,8 +117,23 @@ var Vault = (function () {
     isUnlocked: function () { return !!dek; },
     passkeySupported: passkeySupported,
 
-    // method: 'passkey' or 'passphrase'. Returns the recovery code to show once.
-    create: async function (method, passphrase) {
+    // method: 'device' (no prompt), 'passkey' or 'passphrase'. Returns the recovery code to show once (null for 'device').
+    create: async function (method, passphrase, initial) {
+      if (method === 'device') {
+        // Non-extractable key stored on this device only. Opens with no prompt.
+        var key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+        rec = { v: 1, method: 'device', created: new Date().toISOString(), deviceKey: key };
+        dek = key;
+        try { await writeData(initial || []); }
+        catch (e) {   // browser can't store a key object: keep the raw key instead
+          var r0 = rnd(32);
+          rec = { v: 1, method: 'device', created: rec.created, deviceRaw: r0 };
+          dek = await importDEK(r0);
+          await writeData(initial || []);
+        }
+        try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+        return null;
+      }
       var raw = rnd(32);
       var code = newRecoveryCode();
       var r = { v: 1, method: method, created: new Date().toISOString() };
@@ -135,13 +150,17 @@ var Vault = (function () {
       r.wrapRecovery = await seal(await hkdf(enc.encode(normCode(code)), 'glencal-recovery'), raw);
       rec = r;
       dek = await importDEK(raw);
-      await writeData([]);
+      await writeData(initial || []);
       try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
       return code;
     },
 
     unlock: async function (passphrase) {
       rec = rec || await idbGet(KEY);
+      if (rec.method === 'device') {
+        dek = rec.deviceKey || await importDEK(rec.deviceRaw);
+        return this.read();
+      }
       var kek;
       if (rec.method === 'passkey') kek = await hkdf(await prfGet(rec.credId, rec.prfSalt), 'glencal-passkey');
       else kek = await pbkdf2(passphrase || '', rec.pwSalt);
@@ -160,15 +179,11 @@ var Vault = (function () {
       return this.read();
     },
 
-    // After a recovery-code unlock: set up Face ID (or a passphrase) again for the same data.
+    // Switch how the same data is unlocked ('device', 'passkey' or 'passphrase'). Must be unlocked.
     rekey: async function (method, passphrase) {
       if (!dek) throw new Error('LOCKED');
       var items = await this.read();
-      var oldRec = rec;
-      var code = await this.create(method, passphrase);
-      await writeData(items);
-      void oldRec;
-      return code;
+      return this.create(method, passphrase, items);   // entries are written together with the new key, in one step
     },
 
     read: async function () {
