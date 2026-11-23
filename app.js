@@ -213,11 +213,69 @@
     });
     $('clocks').innerHTML = html;
   }
+  // ---- market ticker: quotes saved by a GitHub job every ~10 min (delayed), read every 2 min ----
+  var MKT = null, mktKey = '';
+  var DP = { USDJPY: 2, SPX: 2, NDX: 2, DOW: 2 };
+  function mktURL() {
+    var h = location.hostname, m = /^([^.]+)\.github\.io$/.exec(h);
+    if (!m) return null;
+    var repo = location.pathname.split('/')[1] || (m[1] + '.github.io');
+    return 'https://raw.githubusercontent.com/' + m[1] + '/' + repo + '/markets/markets.json';
+  }
+  function fmtQ(q) {
+    var dp = q.kind === 'yield' ? 3 : (DP[q.k] != null ? DP[q.k] : 4);
+    var v = Number(q.price).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+    var ch = '', cls = 'fl';
+    if (q.prev) {
+      var d = q.price - q.prev;
+      if (q.kind === 'yield') { var bp = d * 100; ch = (bp > 0 ? '+' : bp < 0 ? '−' : '') + Math.abs(bp).toFixed(1) + 'bp'; cls = bp > 0.05 ? 'up' : bp < -0.05 ? 'dn' : 'fl'; }
+      else { var pc = d / q.prev * 100; ch = (pc > 0 ? '+' : pc < 0 ? '−' : '') + Math.abs(pc).toFixed(2) + '%'; cls = pc > 0.005 ? 'up' : pc < -0.005 ? 'dn' : 'fl'; }
+    }
+    return { v: v, ch: ch, cls: cls };
+  }
+  function renderTicker() {
+    if (!MKT || !MKT.items || !MKT.items.length) return;
+    var key = MKT.items.map(function (q) { return q.k; }).join(',');
+    if (key !== mktKey) {   // build once; later refreshes update numbers in place so the scroll doesn't restart
+      $('tktrack').innerHTML = MKT.items.map(function (q) {
+        return '<span class="tq" data-k="' + esc(q.k) + '"><b>' + esc(q.k) + '</b><span class="v"></span><span class="fl"></span></span>';
+      }).join('');
+      mktKey = key;
+      $('tick').hidden = false;
+      if (unlocked) syncHead();
+    }
+    MKT.items.forEach(function (q) {
+      var el = $('tktrack').querySelector('[data-k="' + q.k + '"]'); if (!el) return;
+      var f = fmtQ(q);
+      el.children[1].textContent = f.v;
+      el.children[2].textContent = f.ch;
+      el.children[2].className = f.cls;
+    });
+  }
+  function loadMarkets() {
+    var url = mktURL(); if (!url || document.hidden) return;
+    fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.items) { MKT = d; renderTicker(); } }).catch(function () {});
+  }
+  function showMarkets() {
+    if (!MKT) return;
+    openSheet('<h2>Markets</h2><table class="mt">' + MKT.items.map(function (q) {
+      var f = fmtQ(q);
+      return '<tr><td>' + esc(q.k) + '</td><td>' + f.v + '</td><td class="' + f.cls + '" style="color:var(--' + (f.cls === 'up' ? 'up' : f.cls === 'dn' ? 'red' : 'muted') + ')">' + f.ch + '</td></tr>';
+    }).join('') + '</table>' +
+      '<p class="small">Delayed quotes from ' + esc(MKT.source || 'Yahoo Finance') + ', fetched ' + esc(MKT.updated) + ' Singapore time; refreshed about every 10 minutes. ' +
+      'Change is against the previous close (yields in basis points). UST 2Y uses the CBOT 2-Year Yield futures as a stand-in for the cash yield. Not for trading.</p>' +
+      '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
+  }
+  $('tick').addEventListener('click', showMarkets);
+  loadMarkets();
+  setInterval(loadMarkets, 2 * 60000);
+
   renderClocks();
   setInterval(renderClocks, 15000);
   loadFinance();
   setInterval(loadFinance, 30 * 60000);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); loadMarkets(); } });
 
   // =====================================================================
   // Feed
@@ -897,7 +955,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c66ea253801f</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 215d19e89a90</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
