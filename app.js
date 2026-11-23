@@ -182,18 +182,29 @@
     document.documentElement.style.setProperty('--headH', headH + 'px');
     var mb = document.querySelector('.mbar'); mbarH = mb ? mb.offsetHeight : 0;
   }
+  // Singapore public holidays from holidays.js: 3 months back to 2 years ahead, rolling.
+  function holidaysOn() { return prefs('holidays') !== 'off'; }
+  function holidayItems() {
+    if (!holidaysOn() || typeof SG_HOLIDAYS === 'undefined') return [];
+    var lo = GC.iso(GC.addDays(new Date(), -90)), hi = GC.iso(GC.addDays(new Date(), 730));
+    return SG_HOLIDAYS.filter(function (h) { return h.date >= lo && h.date <= hi; }).map(function (h) {
+      return { id: 'hol-' + h.date + '-' + h.title.replace(/\W+/g, ''), date: h.date, title: h.title, time: '', place: '', note: '', cat: 'holiday', est: h.est, holiday: true, src: '' };
+    });
+  }
+  function allEntries() { return items.concat(holidayItems()); }
   function visible() {
     var q = $('q').value.trim().toLowerCase();
-    return items.filter(function (i) {
+    return allEntries().filter(function (i) {
       if (activeCat !== 'all' && catOf(i) !== activeCat) return false;
       return !q || [i.title, i.place, i.note, i.src].join(' ').toLowerCase().indexOf(q) >= 0;
     });
   }
   function renderChips() {
     var counts = {};
-    items.forEach(function (i) { var c = catOf(i); counts[c] = (counts[c] || 0) + 1; });
+    var all = allEntries();
+    all.forEach(function (i) { var c = catOf(i); counts[c] = (counts[c] || 0) + 1; });
     if (activeCat !== 'all' && !counts[activeCat]) activeCat = 'all';
-    var html = '<button class="chip" type="button" data-cat="all" aria-pressed="' + (activeCat === 'all') + '">All<span class="n">' + items.length + '</span></button>';
+    var html = '<button class="chip" type="button" data-cat="all" aria-pressed="' + (activeCat === 'all') + '">All<span class="n">' + all.length + '</span></button>';
     GC.CATS.forEach(function (c) {
       if (!counts[c.id]) return;
       html += '<button class="chip" type="button" data-cat="' + c.id + '" aria-pressed="' + (activeCat === c.id) + '">' + c.emoji + ' ' + esc(c.name) + '<span class="n">' + counts[c.id] + '</span></button>';
@@ -229,13 +240,16 @@
         body += '<ul class="dgrp' + (d < todayISO ? ' past' : '') + (d === todayISO ? ' today' : '') + '" id="d-' + d + '">' +
           list.map(function (i, k) {
             var c = GC.CAT_BY_ID[catOf(i)];
-            return '<li><div class="swipe-del"><button type="button" data-del="' + esc(i.id) + '">DELETE</button></div>' +
+            var days = Math.round((GC.fromISO(d) - GC.fromISO(todayISO)) / 86400000);
+            return '<li' + (i.holiday ? ' class="hol"' : '') + '>' +
+              (i.holiday ? '' : '<div class="swipe-del"><button type="button" data-del="' + esc(i.id) + '">DELETE</button></div>') +
               '<button class="item" type="button" data-id="' + esc(i.id) + '">' +
               '<span class="dc">' + (k === 0 ? l.day + ' <span class="w">' + l.dow + '</span>' : '') + '</span>' +
               '<span class="tm">' + (i.time ? esc(GC.fmtTime(i.time)) : '') + '</span>' +
               '<span class="emo" aria-hidden="true">' + c.emoji + '</span>' +
-              '<span class="t">' + esc(i.title) + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
-              (i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span></button></li>';
+              '<span class="t">' + esc(i.title) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
+              (i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span>' +
+              '<span class="cd">' + (k === 0 && days > 0 ? days + 'D' : '') + '</span></button></li>';
           }).join('') + '</ul>';
       });
       html += '<section class="mon"><h2 class="mbar" data-m="' + mk + '"><span>' + MONTH_FULL[md.getMonth()] + ' ' + md.getFullYear() + '</span><span class="n">' + count + '</span></h2>' + body + '</section>';
@@ -285,7 +299,7 @@
   function openSheet(html) { $('sheet').innerHTML = html; $('scrim').hidden = false; }
   function closeSheet() { $('scrim').hidden = true; $('sheet').innerHTML = ''; }
   function catOptions(sel) {
-    return GC.CATS.map(function (c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + c.emoji + ' ' + esc(c.name) + '</option>'; }).join('');
+    return GC.CATS.filter(function (c) { return c.id !== 'holiday'; }).map(function (c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + c.emoji + ' ' + esc(c.name) + '</option>'; }).join('');
   }
   function fieldsHTML(i, n) {
     return '<div class="f">' +
@@ -371,6 +385,15 @@
       '<button class="btn" type="button" data-act="close">Cancel</button>' +
       '<button class="btn primary" type="button" data-act="save-one">Save</button></div>');
   }
+  function showHoliday(id) {
+    var h = holidayItems().filter(function (x) { return x.id === id; })[0];
+    if (!h) return;
+    openSheet('<h2>🇸🇬 ' + esc(h.title) + '</h2><p>' + longLabel(h.date) + ' ' + h.date.slice(0, 4) + '. Singapore public holiday.</p>' +
+      '<p class="small">' + (h.est
+        ? 'Estimated. MOM has not published the ' + h.date.slice(0, 4) + ' dates yet; holidays that follow the lunar or Islamic calendar may move by a day. The official date will replace this once it is announced.'
+        : 'Official date from the Ministry of Manpower.') + '</p>' +
+      '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
+  }
   function saveOne() {
     var f = readFields('e');
     if (!f.title || !f.date) { $('eerr').hidden = false; $('eerr').textContent = 'Add a description and a date before saving.'; return; }
@@ -406,7 +429,7 @@
   function setX(el, x, anim) { el.classList.toggle('anim', !!anim); el.style.transform = x ? 'translateX(' + x + 'px)' : ''; }
   function closeOpen() { if (openRow) { setX(openRow, 0, true); openRow = null; } }
   $('list').addEventListener('pointerdown', function (e) {
-    var el = e.target.closest('.item'); if (!el) return;
+    var el = e.target.closest('.item'); if (!el || !el.parentNode.querySelector('.swipe-del')) return;
     if (openRow && openRow !== el) closeOpen();
     sw = { el: el, x0: e.clientX, y0: e.clientY, base: el === openRow ? -actW(el) : 0, dx: 0, horiz: null };
   });
@@ -514,7 +537,7 @@
   function contextFor(q) {
     var words = q.toLowerCase().split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2 && !STOP[w]; });
     var lo = GC.iso(GC.addDays(new Date(), -14)), hi = GC.iso(GC.addDays(new Date(), 45));
-    var scored = items.map(function (e) {
+    var scored = allEntries().map(function (e) {
       var hay = [e.title, e.place, e.note, GC.CAT_BY_ID[catOf(e)].name].join(' ').toLowerCase();
       var hit = words.some(function (w) { return hay.indexOf(w) >= 0; });
       return { e: e, keep: hit || (e.date >= lo && e.date <= hi), hit: hit };
@@ -608,13 +631,14 @@
   function showMenu() {
     openSheet('<h2>Menu</h2><div class="menu">' +
       '<button class="btn" type="button" data-act="ai-setup">AI on this iPhone</button>' +
+      '<button class="btn" type="button" data-act="hol-toggle">' + (holidaysOn() ? 'Hide' : 'Show') + ' Singapore holidays</button>' +
       '<button class="btn" type="button" data-act="import">Import entries</button>' +
       '<button class="btn" type="button" data-act="export">Export backup</button>' +
       (Vault.method() === 'device'
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b5a07902563b</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 85ad8c4fac97</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -683,7 +707,9 @@
     var b = e.target.closest('button[data-id]'); if (!b) return;
     if (justSwiped) return;
     if (openRow) { closeOpen(); return; }
-    showEdit(b.getAttribute('data-id'));
+    var id = b.getAttribute('data-id');
+    if (id.indexOf('hol-') === 0) { showHoliday(id); return; }
+    showEdit(id);
   });
   $('scrim').addEventListener('click', function (e) { if (e.target === $('scrim') && !askBusy) closeSheet(); });
   $('sheet').addEventListener('click', function (e) {
@@ -705,6 +731,7 @@
     else if (act === 'ask-apply') askApply();
     else if (act === 'ask-discard') { pending = null; askHistory.push({ q: '(discard)', a: 'Discarded.' }); showAsk(); }
     else if (act === 'import') showImport();
+    else if (act === 'hol-toggle') { prefs('holidays', holidaysOn() ? 'off' : 'on'); refresh(); showMenu(); }
     else if (act === 'do-import') doImport();
     else if (act === 'export') doExport();
     else if (act === 'lock') lockNow();
