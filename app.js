@@ -410,7 +410,7 @@
     dates.sort();
     shownDates = dates;
     if (!dates.length) {
-      $('list').innerHTML = (!q && !econMode && Object.keys(hiddenCats).length && !visible().length && allEntries().length) ? '<p class="empty">Every category with entries is switched off. Tap ALL to show everything.</p>'
+      $('list').innerHTML = (!q && !econMode && Object.keys(hiddenCats).length && !visible().length && allEntries().length) ? '<p class="empty">All categories are switched off. Tap a category to show it, or ALL for everything.</p>'
         : (q || econMode || Object.keys(hiddenCats).length) ? '<p class="empty">NO MATCHES</p>'
         : '<p class="empty">Nothing here yet. Tap + ADD and paste any text that has a date in it.</p>';
       return;
@@ -897,7 +897,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 1575cdc763c3</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c66ea253801f</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -974,7 +974,11 @@
     var b = e.target.closest('[data-cat]'); if (!b) return;
     if (held) { held = false; return; }
     var cat = b.getAttribute('data-cat');
-    if (cat === 'all') { hiddenCats = {}; econMode = false; }          // ALL: everything on
+    if (cat === 'all') {                                                // ALL: everything on; tap again: everything off
+      if (allOn()) { hiddenCats = {}; GC.CATS.forEach(function (c) { if (c.id !== 'finance') hiddenCats[c.id] = 1; }); }
+      else hiddenCats = {};
+      econMode = false;
+    }
     else if (cat === 'finance') econMode = !econMode;                   // ECON: its own view, on/off
     else if (econMode) econMode = false;                                // leaving ECON returns to your filter
     else { if (hiddenCats[cat]) delete hiddenCats[cat]; else hiddenCats[cat] = 1; }   // switch one category off/on
