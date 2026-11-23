@@ -94,7 +94,22 @@ input, textarea, select { font-family: var(--mono); }
 .notice { color: var(--amber); font-size: 0.8rem; }
 
 /* feed */
-main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right: max(0.6rem, env(safe-area-inset-right, 0px)); padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); }
+main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right: max(0.6rem, env(safe-area-inset-right, 0px)); padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)); }
+/* bottom section bar */
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; display: grid; grid-template-columns: 1fr 1fr; background: var(--panel); border-top: 1px solid var(--line); padding: 0 max(0.6rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(0.6rem, env(safe-area-inset-left, 0px)); }
+.tabs button { all: unset; text-align: center; padding: 0.75rem 0; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.14em; color: var(--muted); cursor: pointer; border-top: 2px solid transparent; }
+.tabs button[aria-pressed="true"] { color: var(--amber); border-top-color: var(--amber); }
+/* news */
+.nmeta { color: var(--muted); font-size: 0.8rem; padding: 0.45rem 0; }
+.nrow { display: grid; grid-template-columns: 3.1em 3.6em minmax(0, 1fr); column-gap: 0.4rem; align-items: baseline; padding: 0.4rem 0; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; }
+.nrow .nt { color: var(--cyan); }
+.nrow .ns { color: var(--muted); font-weight: 700; font-size: 0.8rem; }
+.nrow .nh { overflow-wrap: anywhere; }
+.nrow .cc { color: var(--muted); font-size: 0.75rem; margin-left: 0.35rem; }
+.nrow.cb .nh { font-weight: 800; }
+.nrow.cb { box-shadow: inset 2px 0 0 var(--amber); padding-left: 0.3rem; }
+.nrow.new .nt::after { content: " ●"; color: var(--amber); font-size: 0.6rem; vertical-align: 0.15rem; }
+.nrow:visited .nh { color: var(--muted); }
 .mbar { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--headH)); z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin: 0.6rem 0 0; min-height: var(--mbarH); padding: 0 0.55rem; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.14em; color: var(--amber); background: var(--raise); border-left: 2px solid var(--amber); border-bottom: 1px solid var(--line); cursor: pointer; box-shadow: 0 -0.6rem 0 var(--bg); }
 .mbar .n { font-weight: 600; letter-spacing: 0.04em; font-size: 0.75rem; color: var(--muted); }
 .mbar .n::after { content: "  JUMP ▾"; }
@@ -148,7 +163,7 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .nowline::after { content: ""; flex: 1; border-top: 1px dashed var(--amber); }
 .empty { color: var(--muted); padding: 2rem 0.5rem; text-align: center; }
 
-.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); z-index: 25; display: flex; align-items: center; gap: 0.6rem; max-width: calc(100vw - 2rem); background: var(--raise); color: var(--fg); border: 1px solid var(--amber); border-radius: 2px; padding: 0.45rem 0.5rem 0.45rem 0.75rem; font-size: 0.9rem; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); z-index: 25; display: flex; align-items: center; gap: 0.6rem; max-width: calc(100vw - 2rem); background: var(--raise); color: var(--fg); border: 1px solid var(--amber); border-radius: 2px; padding: 0.45rem 0.5rem 0.45rem 0.75rem; font-size: 0.9rem; }
 .toast span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* sheets */
@@ -209,13 +224,17 @@ textarea { min-height: 9rem; resize: vertical; }
       <button id="ask" class="key" type="button">ASK</button>
       <button id="jump" class="key" type="button">TODAY</button>
       <button id="add" class="key go" type="button">+ ADD</button>
+      <a id="openx" class="key" href="https://x.com/notifications" target="_blank" rel="noopener noreferrer" hidden>X ↗</a>
       <button id="more" class="key" type="button" aria-label="Menu">···</button>
     </div>
     <label class="cmd"><input id="q" class="search" type="search" placeholder="search" autocomplete="off" aria-label="Search"></label>
     <div id="chips" class="chips" aria-label="Categories"></div>
+    <div id="nchips" class="chips" aria-label="News filters" hidden></div>
     <div id="notice" class="notice" hidden></div>
   </div></header>
   <main id="list"></main>
+  <main id="news" hidden></main>
+  <nav class="tabs" aria-label="Sections"><button id="tab-cal" type="button" data-tab="cal" aria-pressed="true">CALENDAR</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button></nav>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button id="undo" class="key go" type="button">UNDO</button></div>
   <div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true"></div></div>
 </div>
@@ -223,6 +242,7 @@ textarea { min-height: 9rem; resize: vertical; }
 <script src="parser.js"></script>
 <script src="holidays.js"></script>
 <script src="finance.js"></script>
+<script src="push-key.js"></script>
 <script src="vault.js"></script>
 <script src="app.js"></script>
 </body>

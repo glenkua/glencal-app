@@ -1,0 +1,15 @@
+name: Evening notification
+on:
+  schedule:
+    - cron: "0 12 * * *"   # 12:00 UTC = 8:00pm Singapore
+  workflow_dispatch:
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet pywebpush==2.0.3
+      - run: python3 tools/send_push.py
+        env:
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          PUSH_SUBSCRIPTIONS: ${{ secrets.PUSH_SUBSCRIPTIONS }}

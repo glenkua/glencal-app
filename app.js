@@ -275,7 +275,69 @@
   setInterval(renderClocks, 15000);
   loadFinance();
   setInterval(loadFinance, 30 * 60000);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); loadMarkets(); } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); loadMarkets(); if (tab === 'news') loadNews(); } });
+
+  // =====================================================================
+  // News: headlines collected by a GitHub job every ~10 min (same branch as the ticker)
+  // =====================================================================
+  var tab = 'cal', NEWS = null, newsCcy = 'all';
+  var lastSeen = prefs('newsSeen') || '';
+  function newsURL() { var u = mktURL(); return u ? u.replace('/markets.json', '/news.json') : null; }
+  function loadNews() {
+    var url = newsURL(); if (!url || document.hidden) return;
+    fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.items) { NEWS = d; if (tab === 'news') renderNews(); } }).catch(function () {});
+  }
+  var NEWS_CHIPS = [['all', 'All'], ['cb', '★ Central banks'], ['USD', 'USD'], ['EUR', 'EUR'], ['JPY', 'JPY'], ['GBP', 'GBP'], ['AUD', 'AUD'], ['NZD', 'NZD'], ['SGD', 'SGD']];
+  function renderNewsChips() {
+    $('nchips').innerHTML = NEWS_CHIPS.map(function (c) {
+      return '<button class="chip" type="button" data-n="' + c[0] + '" aria-pressed="' + (newsCcy === c[0]) + '">' + esc(c[1]) + '</button>';
+    }).join('');
+  }
+  function renderNews() {
+    if (!NEWS) { $('news').innerHTML = '<p class="empty">Loading headlines…</p>'; return; }
+    var q = $('q').value.trim().toLowerCase();
+    var list = NEWS.items.filter(function (n) {
+      if (newsCcy === 'cb' && !n.cb) return false;
+      if (newsCcy !== 'all' && newsCcy !== 'cb' && (n.ccy || []).indexOf(newsCcy) < 0) return false;
+      return !q || (n.title + ' ' + n.src).toLowerCase().indexOf(q) >= 0;
+    });
+    var html = '<div class="nmeta">Updated ' + esc(NEWS.updated.slice(11)) + ' Singapore · ' + list.length + ' headlines · tap to open</div>', lastDay = '';
+    list.forEach(function (n) {
+      var day = n.t.slice(0, 10);
+      if (day !== lastDay) {
+        var l = dLabel(day), rel = day === todayISO ? 'TODAY · ' : day === GC.iso(GC.addDays(new Date(), -1)) ? 'YESTERDAY · ' : '';
+        html += '<h2 class="mbar"><span>' + rel + l.dow + ' ' + l.day + ' ' + l.mon + '</span></h2>';
+        lastDay = day;
+      }
+      html += '<a class="nrow' + (n.cb ? ' cb' : '') + (lastSeen && n.t > lastSeen ? ' new' : '') + '" href="' + esc(n.url) + '" target="_blank" rel="noopener noreferrer">' +
+        '<span class="nt">' + esc(n.t.slice(11)) + '</span><span class="ns">' + esc(n.src) + '</span>' +
+        '<span class="nh">' + (n.cb ? '<span class="star">★</span> ' : '') + esc(n.title) +
+        ((n.ccy || []).length ? '<span class="cc">' + esc(n.ccy.slice(0, 3).join(' ')) + '</span>' : '') + '</span></a>';
+    });
+    if (!list.length) html += '<p class="empty">NO MATCHES</p>';
+    $('news').innerHTML = html;
+  }
+  function setTab(t) {
+    if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
+    tab = t;
+    var news = t === 'news';
+    $('tab-cal').setAttribute('aria-pressed', !news); $('tab-news').setAttribute('aria-pressed', news);
+    $('list').hidden = news; $('news').hidden = !news;
+    $('chips').hidden = news; $('nchips').hidden = !news; $('openx').hidden = !news;
+    $('ask').hidden = news; $('jump').hidden = news; $('add').hidden = news;
+    $('q').value = '';
+    if (news) { renderNewsChips(); renderNews(); loadNews(); window.scrollTo({ top: 0 }); }
+    else { render(); jumpToday(false); }
+    syncHead();
+  }
+  $('tab-cal').addEventListener('click', function () { setTab('cal'); });
+  $('tab-news').addEventListener('click', function () { setTab('news'); });
+  $('nchips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-n]'); if (!b) return;
+    newsCcy = b.getAttribute('data-n'); renderNewsChips(); renderNews(); window.scrollTo({ top: 0 });
+  });
+  setInterval(function () { if (tab === 'news') loadNews(); }, 2 * 60000);
 
   // =====================================================================
   // Feed
@@ -504,7 +566,20 @@
     $('list').innerHTML = html;
     syncHead();
   }
-  function refresh() { renderChips(); syncHead(); render(); }
+  var digestTimer = null;
+  function refresh() { renderChips(); syncHead(); render(); clearTimeout(digestTimer); digestTimer = setTimeout(writeDigest, 1500); }
+  function writeDigest() {
+    if (!unlocked) return;
+    var lo = GC.iso(new Date()), hi = GC.iso(GC.addDays(new Date(), 60)), days = {};
+    expandAll(items).concat(holidayItems(), billItems().filter(function (b) { return b.isDue && !b.paid; }))
+      .filter(function (e) { return e.date >= lo && e.date <= hi; })
+      .sort(function (a, b) { return (a.time || '') < (b.time || '') ? -1 : 1; })
+      .forEach(function (e) {
+        var line = (e.time ? GC.fmtTime(e.time) + ' ' : '') + e.title + (e.isDue ? ' (payment due)' : '');
+        (days[e.date] = days[e.date] || []).push(line);
+      });
+    Vault.writeDigest({ made: new Date().toISOString(), days: days }).catch(function () {});
+  }
 
   // ---------- jump panel: tap a month bar ----------
   function showJump(curMonth) {
@@ -694,6 +769,31 @@
     if (!r.name) return showRuleForm(id, 'Give it a name, e.g. "Visa card".');
     rules = rules.filter(function (x) { return x.id !== r.id; }).concat([r]);
     persist(); refresh(); showRules();
+  }
+  // ---- evening notification (push) ----
+  function b64u(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); }
+  function showNotify(msg, subJSON) {
+    var ready = typeof PUSH_PUBLIC_KEY === 'string' && PUSH_PUBLIC_KEY.length > 20;
+    var perm = ('Notification' in window) ? Notification.permission : 'unsupported';
+    openSheet('<h2>Evening notification</h2><p>Each evening at about 8pm Singapore time, GlenCal shows tomorrow\'s events and payments due. ' +
+      'The signal from the server carries no calendar data: this iPhone builds the message from its own encrypted copy.</p>' +
+      (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
+      (!ready ? '<p class="small">Not set up yet: the sending key hasn\'t been created. Ask Claude to finish the setup.</p>'
+        : perm === 'unsupported' ? '<p class="small">Notifications need GlenCal opened from its Home Screen icon (iOS 16.4 or later).</p>'
+        : '<p class="small">Permission: ' + perm + '.</p>' +
+          (subJSON ? '<p>Last step: copy this and send it to Claude in your chat. It lets the evening job reach this iPhone (it contains no calendar data).</p><textarea id="subjson" readonly style="min-height:6rem">' + esc(subJSON) + '</textarea>' : '')) +
+      '<div class="actions"><button class="btn grow" type="button" data-act="close">Close</button>' +
+      (ready && perm !== 'unsupported' ? '<button class="btn" type="button" data-act="notify-test">Test</button>' : '') +
+      (subJSON ? '<button class="btn primary" type="button" data-act="notify-copy">Copy</button>' : ready && perm !== 'unsupported' ? '<button class="btn primary" type="button" data-act="notify-on">Turn on</button>' : '') +
+      '</div>');
+  }
+  function turnOnNotify() {
+    Notification.requestPermission().then(function (p) {
+      if (p !== 'granted') return showNotify('Notifications are blocked. Allow them in Settings → Notifications → GlenCal.');
+      return navigator.serviceWorker.ready.then(function (reg) {
+        return reg.pushManager.getSubscription().then(function (s) { return s || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(PUSH_PUBLIC_KEY) }); });
+      }).then(function (sub) { writeDigest(); showNotify('', JSON.stringify(sub)); });
+    }).catch(function (e) { showNotify('Could not turn on: ' + (e.message || e)); });
   }
   function showFinance(id) {
     var f = financeItems().filter(function (x) { return x.id === id; })[0];
@@ -948,6 +1048,7 @@
     openSheet('<h2>Menu</h2><div class="menu">' +
       '<button class="btn" type="button" data-act="ai-setup">AI on this iPhone</button>' +
       '<button class="btn" type="button" data-act="rules">Bills &amp; recurring</button>' +
+      '<button class="btn" type="button" data-act="notify">Evening notification</button>' +
       '<button class="btn" type="button" data-act="hol-toggle">' + (holidaysOn() ? 'Hide' : 'Show') + ' Singapore holidays</button>' +
       '<button class="btn" type="button" data-act="import">Import entries</button>' +
       '<button class="btn" type="button" data-act="export">Export backup</button>' +
@@ -955,7 +1056,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 215d19e89a90</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version a579e5924b98</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1014,7 +1115,7 @@
   // =====================================================================
   // Events
   // =====================================================================
-  $('q').addEventListener('input', function () { render(); if (!$('q').value) jumpToday(false); });
+  $('q').addEventListener('input', function () { if (tab === 'news') { renderNews(); return; } render(); if (!$('q').value) jumpToday(false); });
   $('jump').addEventListener('click', function () { $('q').value = ''; render(); jumpToday(true); });
   var holdTimer = null, held = false, hold0 = null;
   $('chips').addEventListener('pointerdown', function (e) {
@@ -1081,6 +1182,10 @@
     else if (act === 'ask-discard') { pending = null; askHistory.push({ q: '(discard)', a: 'Discarded.' }); showAsk(); }
     else if (act === 'import') showImport();
     else if (act === 'rules') showRules();
+    else if (act === 'notify') showNotify();
+    else if (act === 'notify-on') turnOnNotify();
+    else if (act === 'notify-copy') { var t = $('subjson').value; navigator.clipboard.writeText(t).then(function () { b.textContent = 'Copied'; }, function () { $('subjson').select(); }); }
+    else if (act === 'notify-test') { writeDigest(); navigator.serviceWorker.ready.then(function (r) { return r.showNotification('GlenCal', { body: 'Test: notifications are working.', icon: 'icon-192.png' }); }).catch(function (e) { showNotify('Test failed: ' + (e.message || e)); }); }
     else if (act === 'arr-move') moveChip(b.getAttribute('data-id'), +b.getAttribute('data-dir'));
     else if (act === 'arr-reset') { prefs('chipOrder', ''); renderChips(); showArrange(); }
     else if (act === 'rule-edit') showRuleForm(b.getAttribute('data-rule'));

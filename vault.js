@@ -195,6 +195,11 @@ var Vault = (function () {
       if (!dek) throw new Error('LOCKED');
       await writeData(items);
     },
+    // Next weeks' lines for the evening notification, encrypted with the same key as the entries.
+    writeDigest: async function (obj) {
+      if (!dek) return;
+      await idbPut('digest', await seal(dek, enc.encode(JSON.stringify(obj))));
+    },
     lock: function () { dek = null; }
   };
 })();

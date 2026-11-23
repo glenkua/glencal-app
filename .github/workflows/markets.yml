@@ -14,11 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tools/fetch_markets.py
+      - run: python3 tools/fetch_news.py
       - name: Publish to the markets branch (one commit, replaced each run)
         run: |
-          mkdir out && cp markets.json out/ && cd out
+          mkdir out && cp markets.json news.json out/ && cd out
           git init -q -b markets
           git config user.name "github-actions[bot]"
           git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
-          git add markets.json && git commit -qm "Market quotes"
+          git add markets.json news.json && git commit -qm "Market quotes and headlines"
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" markets
