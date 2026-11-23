@@ -377,7 +377,7 @@
           list.map(function (i, k) {
             var c = GC.CAT_BY_ID[catOf(i)];
             var days = Math.round((GC.fromISO(d) - GC.fromISO(todayISO)) / 86400000);
-            return '<li' + (i.holiday ? ' class="hol"' : i.finance ? ' class="fin"' : i.paid ? ' class="paid"' : '') + '>' +
+            return '<li' + (i.holiday ? ' class="hol"' : i.finance ? ' class="fin"' : i.bill ? ' class="bill' + (i.paid ? ' paid' : '') + '"' : '') + '>' +
               (i.holiday || i.finance || i.bill ? '' : '<div class="swipe-del"><button type="button" data-del="' + esc(i.id) + '">DELETE</button></div>') +
               '<button class="item" type="button" data-id="' + esc(i.id) + '">' +
               '<span class="dc">' + (k === 0 ? l.day + ' <span class="w">' + l.dow + '</span>' : '') + '</span>' +
@@ -563,7 +563,7 @@
   function showRuleForm(id, msg) {
     var r = rules.filter(function (x) { return x.id === id; })[0] || { id: '', name: '', kind: 'statement', day: 1, dueWhen: 'none', dueDay: 1, shift: 'earlier', note: '' };
     openSheet('<h2>' + (r.id ? 'Edit recurring' : 'Add recurring') + '</h2>' + (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
-      '<div class="f"><label>Name<input id="r-name" value="' + esc(r.name) + '" placeholder="e.g. UOB card"></label>' +
+      '<div class="f"><label>Name<input id="r-name" value="' + esc(r.name) + '" placeholder="e.g. Visa card"></label>' +
       '<div class="two"><label>Type<select id="r-kind">' + opts(KIND_NAMES, r.kind) + '</select></label>' +
       '<label>Day each month<select id="r-day">' + dayOptions(r.day) + '</select></label></div>' +
       '<div class="two"><label>Payment due<select id="r-duewhen">' + opts({ none: 'No due date', same: 'Same month', next: 'Next month' }, r.dueWhen) + '</select></label>' +
@@ -576,7 +576,7 @@
   function saveRule(id) {
     var r = { id: id || 'r' + uid(), name: $('r-name').value.trim(), kind: $('r-kind').value, day: $('r-day').value === 'last' ? 'last' : +$('r-day').value,
       dueWhen: $('r-duewhen').value, dueDay: $('r-dueday').value === 'last' ? 'last' : +$('r-dueday').value, shift: $('r-shift').value, note: $('r-note').value.trim() };
-    if (!r.name) return showRuleForm(id, 'Give it a name, e.g. "UOB card".');
+    if (!r.name) return showRuleForm(id, 'Give it a name, e.g. "Visa card".');
     rules = rules.filter(function (x) { return x.id !== r.id; }).concat([r]);
     persist(); refresh(); showRules();
   }
@@ -839,7 +839,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 5a7b7c500c6d</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b4fc1a297933</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {

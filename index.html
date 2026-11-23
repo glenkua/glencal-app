@@ -107,6 +107,8 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .cd { color: var(--muted); font-size: 0.8rem; font-weight: 700; text-align: right; white-space: nowrap; padding-left: 0.3rem; }
 .dgrp li.hol .t { color: var(--muted); }
 .due { display: inline-block; margin-left: 0.35rem; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; color: var(--on-amber); background: var(--amber); padding: 0.05rem 0.3rem; border-radius: 2px; vertical-align: 0.08rem; }
+/* bills: a faintly lighter band so they read as separate from your own entries */
+.dgrp li.bill .item { background: color-mix(in srgb, var(--card) 93%, #ffffff); }
 .dgrp li.paid .t { color: var(--muted); text-decoration: line-through; }
 .dgrp li.paid .due { background: var(--line); color: var(--muted); }
 .rule { display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; padding: 0.5rem 0.6rem; background: var(--bg); border: 1px solid var(--line); border-left: 2px solid var(--amber); cursor: pointer; text-align: left; width: 100%; color: var(--fg); font-family: var(--mono); font-size: 0.95rem; }
