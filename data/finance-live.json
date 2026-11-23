@@ -1,0 +1,55 @@
+{
+ "updated": "2026-11-23 23:32",
+ "items": [
+  {
+   "date": "2026-11-25",
+   "time": "08:30",
+   "ccy": "AUD",
+   "title": "CPI m/m",
+   "kind": "data",
+   "forecast": "0.4%",
+   "previous": "0.8%",
+   "id": "live-2026-11-25-AUD-cpimm"
+  },
+  {
+   "date": "2026-11-25",
+   "time": "08:30",
+   "ccy": "AUD",
+   "title": "CPI y/y",
+   "kind": "data",
+   "forecast": "4.8%",
+   "previous": "4.3%",
+   "id": "live-2026-11-25-AUD-cpiyy"
+  },
+  {
+   "date": "2026-11-25",
+   "time": "08:30",
+   "ccy": "AUD",
+   "title": "Trimmed Mean CPI m/m",
+   "kind": "data",
+   "forecast": "0.3%",
+   "previous": "0.3%",
+   "id": "live-2026-11-25-AUD-trimmedmeancpimm"
+  },
+  {
+   "date": "2026-11-25",
+   "time": "21:30",
+   "ccy": "USD",
+   "title": "Core PCE Price Index m/m",
+   "kind": "data",
+   "forecast": "0.3%",
+   "previous": "0.3%",
+   "id": "live-2026-11-25-USD-corepcepriceindexmm"
+  },
+  {
+   "date": "2026-11-25",
+   "time": "21:30",
+   "ccy": "USD",
+   "title": "Prelim GDP q/q",
+   "kind": "data",
+   "forecast": "3.5%",
+   "previous": "3.4%",
+   "id": "live-2026-11-25-USD-prelimgdpqq"
+  }
+ ]
+}
