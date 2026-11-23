@@ -281,7 +281,27 @@
     });
     return out;
   }
-  function allEntries() { return items.concat(holidayItems(), billItems()); }
+  var REPEAT_NAMES = { none: 'Does not repeat', weekly: 'Every week', monthly: 'Every month', yearly: 'Every year' };
+  function occurrences(it) {
+    if (!it.repeat || it.repeat === 'none' || !GC.fromISOok(it.date)) return [it];
+    var start = GC.fromISO(it.date), now = new Date();
+    var lo = GC.addDays(now, -90), hi = GC.addDays(now, it.repeat === 'yearly' ? 730 : 365), out = [];
+    for (var n = 0; n < 5000; n++) {
+      var d = it.repeat === 'weekly' ? GC.addDays(start, 7 * n)
+        : it.repeat === 'monthly' ? dayIn(start.getFullYear(), start.getMonth() + n, start.getDate())
+        : dayIn(start.getFullYear() + n, start.getMonth(), start.getDate());   // 29 Feb -> 28 Feb in other years
+      if (d > hi) break;
+      if (d < lo) continue;
+      var iso = GC.iso(d);
+      var o = Object.assign({}, it, { id: it.id + '@' + iso, date: iso, seriesId: it.id, recurring: true });
+      // birthdays/anniversaries entered with the real original date (5+ years back) show the count
+      if (it.repeat === 'yearly' && n > 0 && now.getFullYear() - start.getFullYear() >= 5 && /birthday|bday|anniversary/i.test(it.title)) o.age = n;
+      out.push(o);
+    }
+    return out;
+  }
+  function expandAll(list) { var out = []; list.forEach(function (it) { out = out.concat(occurrences(it)); }); return out; }
+  function allEntries() { return expandAll(items).concat(holidayItems(), billItems()); }
 
   // ---- Finance tab: official schedules (finance.js) + live high-impact feed (data/finance-live.json) ----
   var finLive = { items: [], updated: '' };
@@ -386,7 +406,7 @@
     dates.sort();
     shownDates = dates;
     if (!dates.length) {
-      $('list').innerHTML = (!q && activeCat === 'bills') ? '<p class="empty">No cards or bills yet. Add them in ··· → Bills &amp; recurring, or import your list.</p>'
+      $('list').innerHTML = (!q && activeCat === 'bills') ? '<div class="empty"><p>No cards or bills yet.</p><button class="btn primary" type="button" data-open="rules">Add or paste your list</button></div>'
         : (q || activeCat !== 'all') ? '<p class="empty">NO MATCHES</p>'
         : '<p class="empty">Nothing here yet. Tap + ADD and paste any text that has a date in it.</p>';
       return;
@@ -412,7 +432,7 @@
               '<span class="dc">' + (k === 0 ? l.day + ' <span class="w">' + l.dow + '</span>' : '') + '</span>' +
               '<span class="tm">' + (i.time ? esc(GC.fmtTime(i.time)) : '') + '</span>' +
               '<span class="emo" aria-hidden="true">' + (i.emoji || c.emoji) + '</span>' +
-              '<span class="t">' + (i.finance ? '<b>' + esc(i.ccy) + '</b> ' + esc(i.raw) + (i.check ? '<span class="pl"> (check)</span>' : '') : esc(i.title)) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.isDue ? '<span class="due">' + (i.paid ? 'PAID' : 'DUE') + '</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
+              '<span class="t">' + (i.finance ? '<b>' + esc(i.ccy) + '</b> ' + esc(i.raw) + (i.check ? '<span class="pl"> (check)</span>' : '') : esc(i.title) + (i.age ? ' (' + i.age + ')' : '') + (i.recurring ? '<span class="pl"> ↻</span>' : '')) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.isDue ? '<span class="due">' + (i.paid ? 'PAID' : 'DUE') + '</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
               (i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span>' +
               '<span class="cd">' + (k === 0 && days > 0 ? days + 'D' : '') + '</span></button></li>';
           }).join('') + '</ul>';
@@ -473,11 +493,12 @@
       '<label>Time (optional)<input id="time-' + n + '" value="' + esc(GC.fmtTime(i.time)) + '" placeholder="3pm"></label>' +
       '<label>Place (optional)<input id="place-' + n + '" value="' + esc(i.place) + '"></label>' +
       '<label>Note (optional)<input id="note-' + n + '" value="' + esc(i.note) + '" placeholder="e.g. bring passport"></label>' +
-      '<label>Category<select id="cat-' + n + '">' + catOptions(catOf(i)) + '</select></label></div>';
+      '<label>Category<select id="cat-' + n + '">' + catOptions(catOf(i)) + '</select></label>' +
+      '<label>Repeats<select id="rep-' + n + '">' + opts(REPEAT_NAMES, i.repeat || 'none') + '</select></label></div>';
   }
   function readFields(n) {
     return { title: $('title-' + n).value.trim(), date: $('date-' + n).value, time: GC.normTime($('time-' + n).value),
-      place: $('place-' + n).value.trim(), note: $('note-' + n).value.trim(), cat: $('cat-' + n).value };
+      place: $('place-' + n).value.trim(), note: $('note-' + n).value.trim(), cat: $('cat-' + n).value, repeat: $('rep-' + n).value };
   }
 
   var lastPaste = '';
@@ -502,6 +523,8 @@
     drafts = list.map(function (d) {
       var x = { id: uid(), title: d.title || '', date: d.date || '', time: d.time || '', place: d.place || '', note: d.note || '', src: d.src || '', flag: d.flag || '' };
       x.cat = (d.cat && GC.CAT_BY_ID[d.cat]) ? d.cat : GC.inferCat([x.title, x.place, x.note].join(' '));
+      // suggest "every year" for birthdays and anniversaries (not for one-off drinks or dinners)
+      x.repeat = d.repeat || (/birthday|bday|anniversary/i.test(x.title) && !/drinks|dinner|lunch|party|celebrat/i.test(x.title) ? 'yearly' : 'none');
       return x;
     });
     if (!drafts.length) {
@@ -529,7 +552,7 @@
       var f = readFields(n), ok = f.title && f.date;
       $('row-' + n).classList.toggle('bad', !ok);
       if (!ok) { bad++; return; }
-      out.push({ id: d.id, title: f.title, date: f.date, time: f.time, place: f.place, note: f.note, cat: f.cat, src: d.src, added: now });
+      out.push({ id: d.id, title: f.title, date: f.date, time: f.time, place: f.place, note: f.note, cat: f.cat, repeat: f.repeat, src: d.src, added: now });
     });
     if (bad) { $('cerr').hidden = false; $('cerr').textContent = bad + (bad === 1 ? ' entry needs' : ' entries need') + ' a description and a date.'; return; }
     if (!out.length) { closeSheet(); return; }
@@ -540,10 +563,11 @@
 
   var editing = null, delArmed = false;
   function showEdit(id) {
-    editing = items.filter(function (i) { return i.id === id; })[0];
+    var sid = String(id).split('@')[0];
+    editing = items.filter(function (i) { return i.id === sid; })[0];
     if (!editing) return;
     delArmed = false;
-    openSheet('<h2>Edit</h2>' + fieldsHTML(editing, 'e') +
+    openSheet('<h2>Edit</h2>' + (editing.repeat && editing.repeat !== 'none' ? '<p class="small">Repeats ' + REPEAT_NAMES[editing.repeat].toLowerCase() + '. Changes and delete apply to every occurrence; Date is the first one.</p>' : '') + fieldsHTML(editing, 'e') +
       (editing.src ? '<div><p>Original text</p><div class="src">' + esc(editing.src) + '</div></div>' : '') +
       '<div id="eerr" class="err" hidden></div>' +
       '<div class="actions"><button class="btn danger grow" type="button" data-act="del">Delete</button>' +
@@ -586,7 +610,7 @@
       return '<button class="rule" type="button" data-act="rule-edit" data-rule="' + esc(r.id) + '"><span>' + esc(r.name) + '</span><span class="small">' +
         esc(KIND_LABEL[r.kind] || '') + ' ' + (r.day === 'last' ? 'last day' : r.day) + (due ? ' · ' + due : '') + '</span></button>';
     }).join('') : '<p class="small">Nothing yet.</p>';
-    h += '<div class="actions"><button class="btn grow" type="button" data-act="close">Close</button><button class="btn primary" type="button" data-act="rule-edit" data-rule="">Add</button></div>';
+    h += '<div class="actions"><button class="btn grow" type="button" data-act="close">Close</button><button class="btn" type="button" data-act="paste-import">Paste list</button><button class="btn primary" type="button" data-act="rule-edit" data-rule="">Add</button></div>';
     openSheet(h);
   }
   function showRuleForm(id, msg) {
@@ -633,6 +657,7 @@
   // ---------- delete with undo ----------
   var toastTimer = null, lastDeleted = null;
   function removeItem(id) {
+    id = String(id).split('@')[0];
     var it = items.filter(function (i) { return i.id === id; })[0];
     if (!it) return;
     var y = window.pageYOffset;
@@ -774,7 +799,7 @@
     scored.sort(function (a, b) { return (b.hit - a.hit) || (a.e.date < b.e.date ? -1 : 1); });
     return scored.slice(0, 45).map(function (x) { return x.e; }).sort(function (a, b) { return (a.date + a.time) < (b.date + b.time) ? -1 : 1; })
       .map(function (e) {
-        return e.id + ' | ' + e.date + ' ' + dLabel(e.date).dow + (e.time ? ' ' + e.time : '') + ' | ' + e.title + (e.place ? ' @ ' + e.place : '') + (e.note ? ' | ' + e.note : '');
+        return (e.seriesId || e.id) + ' | ' + e.date + ' ' + dLabel(e.date).dow + (e.time ? ' ' + e.time : '') + ' | ' + e.title + (e.place ? ' @ ' + e.place : '') + (e.note ? ' | ' + e.note : '');
       }).join('\n');
   }
   function summary(e) {
@@ -868,18 +893,18 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 4e833187f2ff</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 3a35744a56b7</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
     openSheet('<h2>Import entries</h2><p>Paste a GlenCal backup, or the data copied from the Scriptable version. Entries with the same id are replaced, others are added.</p>' +
       '<textarea id="imp" placeholder="[ { &quot;date&quot;: ... } ]"></textarea>' + (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
-      '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button><button class="btn primary" type="button" data-act="do-import">Import</button></div>');
+      '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button><button class="btn" type="button" data-act="paste-import">Paste from clipboard</button><button class="btn primary" type="button" data-act="do-import">Import</button></div>');
   }
-  function doImport() {
+  function doImport(text) {
     var list;
     var newRules = [];
-    try { var d = JSON.parse($('imp').value); list = Array.isArray(d) ? d : (d && (d.items || [])); newRules = (d && d.rules) || []; if (d && d.paid) Object.assign(paid, d.paid); } catch (e) {}
+    try { var d = JSON.parse(text != null ? text : $('imp').value); list = Array.isArray(d) ? d : (d && (d.items || [])); newRules = (d && d.rules) || []; if (d && d.paid) Object.assign(paid, d.paid); } catch (e) {}
     newRules = newRules.filter(function (r) { return r && r.name && r.day; }).map(function (r) {
       return { id: r.id || 'r' + uid(), name: String(r.name), kind: KIND_LABEL[r.kind] ? r.kind : 'statement', day: r.day === 'last' ? 'last' : +r.day,
         dueWhen: r.dueWhen === 'same' || r.dueWhen === 'next' ? r.dueWhen : 'none', dueDay: r.dueDay === 'last' ? 'last' : +(r.dueDay || 1),
@@ -888,7 +913,7 @@
     if (newRules.length) { var rid = {}; newRules.forEach(function (r) { rid[r.id] = 1; }); rules = rules.filter(function (r) { return !rid[r.id]; }).concat(newRules); }
     if (!Array.isArray(list) || (!list.length && !newRules.length)) return showImport('That isn\'t a GlenCal backup. Paste the whole text, starting with [ or {.');
     var clean = list.filter(function (x) { return x && x.title && GC.fromISOok(x.date); }).map(function (x) {
-      return { id: x.id || uid(), date: x.date, title: String(x.title), time: x.time || '', place: x.place || '', note: x.note || '', cat: x.cat || '', src: x.src || '', added: x.added || '' };
+      return { id: x.id || uid(), date: x.date, title: String(x.title), time: x.time || '', place: x.place || '', note: x.note || '', cat: x.cat || '', repeat: REPEAT_NAMES[x.repeat] ? x.repeat : 'none', src: x.src || '', added: x.added || '' };
     });
     var byId = {}; clean.forEach(function (x) { byId[x.id] = x; });
     items = items.filter(function (i) { return !byId[i.id]; }).concat(clean);
@@ -950,6 +975,7 @@
   $('ask').addEventListener('click', showAsk);
   $('more').addEventListener('click', showMenu);
   $('list').addEventListener('click', function (e) {
+    if (e.target.closest('[data-open="rules"]')) { showRules(); return; }
     var mb = e.target.closest('.mbar');
     if (mb) { showJump(mb.getAttribute('data-m')); return; }
     var d = e.target.closest('[data-del]');
@@ -992,6 +1018,10 @@
     else if (act === 'bill-paid') { var bid = b.getAttribute('data-bill'); if (paid[bid]) delete paid[bid]; else paid[bid] = 1; persist(); refresh(); showBill(bid); }
     else if (act === 'hol-toggle') { prefs('holidays', holidaysOn() ? 'off' : 'on'); refresh(); showMenu(); }
     else if (act === 'do-import') doImport();
+    else if (act === 'paste-import') {
+      if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(function (t) { doImport(t); }, function () { showImport('Couldn\'t read the clipboard. Paste into the box instead.'); });
+      else showImport('Paste into the box instead.');
+    }
     else if (act === 'export') doExport();
     else if (act === 'lock') lockNow();
     else if (act === 'lock-off') { prefs('lock', 'off'); Vault.rekey('device').then(showMenu, function (e) { notice('Could not turn off the lock: ' + e.message); }); }
