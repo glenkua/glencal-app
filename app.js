@@ -173,6 +173,43 @@
   });
 
   // =====================================================================
+  // World clocks. Amber = that city's main stock exchange is in its trading session
+  // (weekdays, local time, lunch breaks excluded; exchange holidays are not accounted for).
+  // =====================================================================
+  var CLOCKS = [
+    { c: 'WLG', tz: 'Pacific/Auckland', s: [[600, 1005]], x: 'NZX 10:00-16:45' },
+    { c: 'SYD', tz: 'Australia/Sydney', s: [[600, 960]], x: 'ASX 10:00-16:00' },
+    { c: 'TYO', tz: 'Asia/Tokyo', s: [[540, 690], [750, 930]], x: 'TSE 9:00-11:30, 12:30-15:30' },
+    { c: 'SG/HK', tz: 'Asia/Singapore', s: [[540, 720], [780, 1020]], x: 'SGX 9:00-12:00, 13:00-17:00' },
+    { c: 'LON', tz: 'Europe/London', s: [[480, 990]], x: 'LSE 8:00-16:30' },
+    { c: 'NYC', tz: 'America/New_York', s: [[570, 960]], x: 'NYSE 9:30-16:00' }
+  ];
+  var tzFmt = {};
+  function zoned(tz, now) {
+    var f = tzFmt[tz] || (tzFmt[tz] = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', weekday: 'short',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
+    var p = {};
+    f.formatToParts(now).forEach(function (x) { p[x.type] = x.value; });
+    return { ymd: p.year + '-' + p.month + '-' + p.day, h: +p.hour, m: +p.minute, wd: p.weekday };
+  }
+  function renderClocks() {
+    var now = new Date(), here = GC.iso(now), html = '';
+    CLOCKS.forEach(function (k) {
+      var z = zoned(k.tz, now), mins = z.h * 60 + z.m;
+      var weekday = z.wd !== 'Sat' && z.wd !== 'Sun';
+      var open = weekday && k.s.some(function (r) { return mins >= r[0] && mins < r[1]; });
+      var diff = Math.round((GC.fromISO(z.ymd) - GC.fromISO(here)) / 86400000);
+      html += '<div class="ck' + (open ? ' open' : '') + '" title="' + k.x + (open ? ' (open)' : ' (closed)') + '">' +
+        '<span class="c">' + k.c + '</span><span class="h">' + ('0' + z.h).slice(-2) + ':' + ('0' + z.m).slice(-2) +
+        (diff ? '<span class="o">' + (diff > 0 ? '+' : '−') + Math.abs(diff) + '</span>' : '') + '</span></div>';
+    });
+    $('clocks').innerHTML = html;
+  }
+  renderClocks();
+  setInterval(renderClocks, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) renderClocks(); });
+
+  // =====================================================================
   // Feed
   // =====================================================================
   function setClock() { var l = dLabel(todayISO); $('clock').textContent = l.dow + ' ' + l.day + ' ' + l.mon + ' ' + todayISO.slice(0, 4); }
@@ -638,7 +675,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 85ad8c4fac97</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 7c143d36cee3</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
