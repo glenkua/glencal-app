@@ -9,7 +9,11 @@
 
   var items = [];
   var unlocked = false;
-  var activeCat = 'all';
+  var econMode = false;                 // ECON view: economic calendar only
+  var hiddenCats = {};                  // categories switched off in the main feed
+  try { (localStorage.getItem('glencal.hiddenCats') || '').split(',').forEach(function (c) { if (c) hiddenCats[c] = 1; }); } catch (e) {}
+  function saveHidden() { prefs('hiddenCats', Object.keys(hiddenCats).join(',')); }
+  function allOn() { return !econMode && !Object.keys(hiddenCats).length; }
   var todayISO = GC.iso(new Date());
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -184,7 +188,7 @@
     { c: 'WELLINGTON', tz: 'Pacific/Auckland', s: [[600, 1005]], x: 'NZX 10:00-16:45' },
     { c: 'SYDNEY', tz: 'Australia/Sydney', s: [[600, 960]], x: 'ASX 10:00-16:00' },
     { c: 'TOKYO', tz: 'Asia/Tokyo', s: [[540, 690], [750, 930]], x: 'TSE 9:00-11:30, 12:30-15:30' },
-    { c: 'SG·HK', home: true, tz: 'Asia/Singapore', s: [[540, 720], [780, 1020]], x: 'SGX 9:00-12:00, 13:00-17:00' },
+    { c: 'SINGAPORE', home: true, tz: 'Asia/Singapore', s: [[540, 720], [780, 1020]], x: 'SGX 9:00-12:00, 13:00-17:00' },
     { c: 'LONDON', tz: 'Europe/London', s: [[480, 990]], x: 'LSE 8:00-16:30' },
     { c: 'NEW YORK', tz: 'America/New_York', s: [[570, 960]], x: 'NYSE 9:30-16:00' }
   ];
@@ -309,7 +313,7 @@
     fetch('data/finance-live.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
       if (!d || !d.items) return;
       finLive = d;
-      if (unlocked) { renderChips(); if (activeCat === 'finance') render(); }
+      if (unlocked) { renderChips(); if (econMode) render(); }
     }).catch(function () {});
   }
   var CB_RE = /rate|monetary policy|policy statement|press conference|statement/i;
@@ -348,8 +352,8 @@
   }
   function visible() {
     var q = $('q').value.trim().toLowerCase();
-    return (activeCat === 'finance' ? financeItems() : allEntries()).filter(function (i) {
-      if (activeCat !== 'all' && catOf(i) !== activeCat) return false;
+    return (econMode ? financeItems() : allEntries()).filter(function (i) {
+      if (!econMode && hiddenCats[catOf(i)]) return false;
       return !q || [i.title, i.place, i.note, i.src].join(' ').toLowerCase().indexOf(q) >= 0;
     });
   }
@@ -367,11 +371,11 @@
     var all = allEntries();
     all.forEach(function (i) { var c = catOf(i); counts[c] = (counts[c] || 0) + 1; });
     counts.finance = financeItems().filter(function (x) { return x.date >= todayISO; }).length;
-    if (activeCat !== 'all' && !ALWAYS[activeCat] && !counts[activeCat]) activeCat = 'all';
-    var html = '<button class="chip" type="button" data-cat="all" aria-pressed="' + (activeCat === 'all') + '">All<span class="n">' + all.length + '</span></button>';
+    var html = '<button class="chip" type="button" data-cat="all" aria-pressed="' + allOn() + '">All<span class="n">' + all.length + '</span></button>';
     chipOrder().forEach(function (id) {
       if (!counts[id] && !ALWAYS[id]) return;
-      html += '<button class="chip' + (id === 'finance' ? ' fin' : '') + '" type="button" data-cat="' + id + '" aria-pressed="' + (activeCat === id) + '">' +
+      var on = id === 'finance' ? econMode : (!econMode && !hiddenCats[id]);
+      html += '<button class="chip' + (id === 'finance' ? ' fin' : '') + (on ? '' : ' off') + '" type="button" data-cat="' + id + '" aria-pressed="' + on + '">' +
         esc(chipLabel(id)) + '<span class="n">' + (counts[id] || 0) + '</span></button>';
     });
     $('chips').innerHTML = html;
@@ -406,8 +410,8 @@
     dates.sort();
     shownDates = dates;
     if (!dates.length) {
-      $('list').innerHTML = (!q && activeCat === 'bills') ? '<div class="empty"><p>No cards or bills yet.</p><button class="btn primary" type="button" data-open="rules">Add or paste your list</button></div>'
-        : (q || activeCat !== 'all') ? '<p class="empty">NO MATCHES</p>'
+      $('list').innerHTML = (!q && !econMode && Object.keys(hiddenCats).length && !visible().length && allEntries().length) ? '<p class="empty">Every category with entries is switched off. Tap ALL to show everything.</p>'
+        : (q || econMode || Object.keys(hiddenCats).length) ? '<p class="empty">NO MATCHES</p>'
         : '<p class="empty">Nothing here yet. Tap + ADD and paste any text that has a date in it.</p>';
       return;
     }
@@ -557,7 +561,7 @@
     if (bad) { $('cerr').hidden = false; $('cerr').textContent = bad + (bad === 1 ? ' entry needs' : ' entries need') + ' a description and a date.'; return; }
     if (!out.length) { closeSheet(); return; }
     items = items.concat(out); persist();
-    closeSheet(); activeCat = 'all'; refresh();
+    closeSheet(); econMode = false; refresh();
     scrollToEl($('d-' + out[0].date), true);
   }
 
@@ -893,7 +897,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c89fc63156b1</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 1575cdc763c3</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -969,7 +973,12 @@
   $('chips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-cat]'); if (!b) return;
     if (held) { held = false; return; }
-    activeCat = b.getAttribute('data-cat'); refresh(); jumpToday(false);
+    var cat = b.getAttribute('data-cat');
+    if (cat === 'all') { hiddenCats = {}; econMode = false; }          // ALL: everything on
+    else if (cat === 'finance') econMode = !econMode;                   // ECON: its own view, on/off
+    else if (econMode) econMode = false;                                // leaving ECON returns to your filter
+    else { if (hiddenCats[cat]) delete hiddenCats[cat]; else hiddenCats[cat] = 1; }   // switch one category off/on
+    saveHidden(); refresh(); jumpToday(false);
   });
   $('add').addEventListener('click', function () { showPaste(''); });
   $('ask').addEventListener('click', showAsk);
