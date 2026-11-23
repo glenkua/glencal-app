@@ -53,6 +53,10 @@ input, textarea, select { font-family: var(--mono); }
 .chip.fin[aria-pressed="true"] { color: var(--cyan); background: var(--bg); border-color: var(--cyan); }
 .chip.fin[aria-pressed="true"] .n { color: var(--cyan); }
 .dgrp li.fin .t b { color: var(--cyan); font-weight: 700; }
+/* central bank decisions: the most important ECON events */
+.dgrp li.fin.cb .item { box-shadow: inset 2px 0 0 var(--amber); }
+.dgrp li.fin.cb .t { font-weight: 800; color: var(--fg); padding-left: 0.15rem; }
+.star { color: var(--amber); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.8rem; font-size: 0.95rem; }
 .kv span:nth-child(odd) { color: var(--muted); }
 .r1 { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
