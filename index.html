@@ -21,7 +21,7 @@
   --bg: #000000; --panel: #0e0e0e; --raise: #1a1a1a; --line: #262626;
   --fg: #ececec; --muted: #8c8c8c; --amber: #ffa21f; --on-amber: #000000;
   --cyan: #5fd0e8; --red: #ff5f56; --today: #1c1300;
-  --rail: 1.9rem; --headH: 7rem; --mbarH: 1.7rem;
+  --headH: 7rem; --mbarH: 2rem;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color-scheme: dark;
@@ -60,9 +60,22 @@ input, textarea, select { font-family: var(--mono); }
 .notice { color: var(--amber); font-size: 0.8rem; }
 
 /* feed */
-main { padding-left: calc(var(--rail) + max(0.5rem, env(safe-area-inset-left, 0px))); padding-right: max(0.6rem, env(safe-area-inset-right, 0px)); padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); }
-.mbar { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--headH)); z-index: 3; display: flex; justify-content: space-between; gap: 0.5rem; margin: 0; height: var(--mbarH); align-items: center; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.12em; color: var(--amber); background: var(--bg); border-bottom: 1px solid var(--line); }
-.mbar .n { color: var(--muted); font-weight: 500; letter-spacing: 0.04em; }
+main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right: max(0.6rem, env(safe-area-inset-right, 0px)); padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); }
+.mbar { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--headH)); z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin: 0.6rem 0 0; min-height: var(--mbarH); padding: 0 0.55rem; font-size: 0.9rem; font-weight: 800; letter-spacing: 0.14em; color: var(--on-amber); background: var(--amber); cursor: pointer; box-shadow: 0 -0.6rem 0 var(--bg); }
+.mbar .n { font-weight: 700; letter-spacing: 0.04em; font-size: 0.8rem; opacity: 0.7; }
+.mbar .n::after { content: "  JUMP ▾"; }
+.mon:first-child .mbar { margin-top: 0; }
+/* jump panel */
+.jm { display: flex; flex-direction: column; gap: 0.4rem; }
+.jmh { font-weight: 800; font-size: 0.85rem; letter-spacing: 0.14em; color: var(--on-amber); background: var(--amber); padding: 0.35rem 0.55rem; }
+.jd { display: grid; grid-template-columns: repeat(auto-fill, minmax(3.6rem, 1fr)); gap: 0.35rem; }
+.jday { font-family: var(--mono); background: var(--raise); border: 1px solid var(--line); border-radius: 2px; color: var(--fg); padding: 0.4rem 0.2rem; display: flex; flex-direction: column; align-items: center; gap: 0.1rem; cursor: pointer; }
+.jday b { font-size: 1.15rem; color: var(--amber); }
+.jday .w { font-size: 0.7rem; color: var(--muted); }
+.jday .e { font-family: var(--sans); font-size: 0.75rem; letter-spacing: -0.05em; min-height: 1em; }
+.jday.past b { color: var(--muted); }
+.jday.past .e { opacity: 0.55; }
+.jday.today { border-color: var(--amber); background: var(--today); }
 .dgrp { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--line); --card: var(--bg); }
 .dgrp li { position: relative; overflow: hidden; }
 .item { all: unset; box-sizing: border-box; position: relative; z-index: 1; display: grid; grid-template-columns: 3.6em 3.9em 1.5em minmax(0, 1fr); column-gap: 0.35rem; align-items: baseline; width: 100%; padding: 0.28rem 0; cursor: pointer; background: var(--card); touch-action: pan-y; }
@@ -84,16 +97,6 @@ main { padding-left: calc(var(--rail) + max(0.5rem, env(safe-area-inset-left, 0p
 .nowline { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0; color: var(--amber); font-weight: 800; font-size: 0.85rem; letter-spacing: 0.04em; border-bottom: 1px solid var(--line); }
 .nowline::after { content: ""; flex: 1; border-top: 1px dashed var(--amber); }
 .empty { color: var(--muted); padding: 2rem 0.5rem; text-align: center; }
-
-/* scrub rail */
-.rail { position: fixed; z-index: 4; left: env(safe-area-inset-left, 0px); width: var(--rail); top: calc(env(safe-area-inset-top, 0px) + var(--headH)); bottom: env(safe-area-inset-bottom, 0px); background: var(--panel); border-right: 1px solid var(--line); touch-action: none; user-select: none; -webkit-user-select: none; }
-.rail span { position: absolute; left: 0; right: 0; transform: translateY(-50%); text-align: center; pointer-events: none; }
-.rm { font-size: 0.62rem; font-weight: 800; color: var(--amber); }
-.rd { font-size: 0.62rem; color: var(--muted); }
-.rd.now { color: var(--amber); font-weight: 800; }
-.rt { height: 1px; width: 0.4rem; left: auto !important; right: 0.3rem !important; background: var(--line); }
-.rind { height: 2px; background: var(--amber); }
-.bub { position: fixed; z-index: 9; left: calc(var(--rail) + env(safe-area-inset-left, 0px) + 0.4rem); transform: translateY(-50%); pointer-events: none; font-weight: 800; font-size: 1rem; color: var(--on-amber); background: var(--amber); border-radius: 2px; padding: 0.3rem 0.55rem; white-space: nowrap; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); z-index: 25; display: flex; align-items: center; gap: 0.6rem; max-width: calc(100vw - 2rem); background: var(--raise); color: var(--fg); border: 1px solid var(--amber); border-radius: 2px; padding: 0.45rem 0.5rem 0.45rem 0.75rem; font-size: 0.9rem; }
 .toast span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -160,8 +163,6 @@ textarea { min-height: 9rem; resize: vertical; }
     <div id="chips" class="chips" aria-label="Categories"></div>
     <div id="notice" class="notice" hidden></div>
   </div></header>
-  <nav id="rail" class="rail" aria-label="Scroll to date"></nav>
-  <div id="bub" class="bub" hidden></div>
   <main id="list"></main>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button id="undo" class="key go" type="button">UNDO</button></div>
   <div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true"></div></div>

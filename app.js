@@ -131,7 +131,7 @@
     document.body.classList.remove('covered');
     setClock();
     refresh();
-    setTimeout(function () { syncHead(); buildRail(); jumpToday(false); }, 0);
+    setTimeout(function () { syncHead(); jumpToday(false); }, 0);
   }
 
   function lockNow() {
@@ -140,7 +140,6 @@
     items = [];
     closeSheet();
     $('list').innerHTML = '';
-    $('rail').innerHTML = '';
     askHistory = []; pending = null;
     showUnlock();
   }
@@ -198,7 +197,7 @@
     if (!dates.length) {
       $('list').innerHTML = (q || activeCat !== 'all') ? '<p class="empty">NO MATCHES</p>'
         : '<p class="empty">Nothing here yet. Tap + ADD and paste any text that has a date in it.</p>';
-      buildRail(); return;
+      return;
     }
     var byMonth = {};
     dates.forEach(function (d) { (byMonth[d.slice(0, 7)] = byMonth[d.slice(0, 7)] || []).push(d); });
@@ -223,13 +222,36 @@
               (i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span></button></li>';
           }).join('') + '</ul>';
       });
-      html += '<section class="mon"><h2 class="mbar"><span>' + MONTH_FULL[md.getMonth()] + ' ' + md.getFullYear() + '</span><span class="n">' + count + '</span></h2>' + body + '</section>';
+      html += '<section class="mon"><h2 class="mbar" data-m="' + mk + '"><span>' + MONTH_FULL[md.getMonth()] + ' ' + md.getFullYear() + '</span><span class="n">' + count + '</span></h2>' + body + '</section>';
     });
     $('list').innerHTML = html;
     syncHead();
-    buildRail();
   }
   function refresh() { renderChips(); syncHead(); render(); }
+
+  // ---------- jump panel: tap a month bar ----------
+  function showJump(curMonth) {
+    var byDate = {};
+    visible().forEach(function (i) { (byDate[i.date] = byDate[i.date] || []).push(i); });
+    var dates = Object.keys(byDate).sort(), byMonth = {};
+    dates.forEach(function (d) { (byMonth[d.slice(0, 7)] = byMonth[d.slice(0, 7)] || []).push(d); });
+    var html = '<h2>Jump to</h2><div class="actions"><button class="btn primary grow" type="button" data-act="jump-today">Today</button>' +
+      '<button class="btn" type="button" data-act="close">Close</button></div>';
+    Object.keys(byMonth).sort().forEach(function (mk) {
+      var md = GC.fromISO(mk + '-01');
+      html += '<div class="jm" id="jm-' + mk + '"><div class="jmh">' + MONTH_FULL[md.getMonth()] + ' ' + md.getFullYear() + '</div><div class="jd">' +
+        byMonth[mk].map(function (d) {
+          var l = dLabel(d), seen = {}, emo = '';
+          byDate[d].forEach(function (i) { var e = GC.CAT_BY_ID[catOf(i)].emoji; if (!seen[e] && Object.keys(seen).length < 3) { seen[e] = 1; emo += e; } });
+          return '<button class="jday' + (d < todayISO ? ' past' : '') + (d === todayISO ? ' today' : '') + '" type="button" data-act="jump" data-day="' + d + '">' +
+            '<b>' + l.day + '</b><span class="w">' + l.dow + '</span><span class="e">' + emo + '</span></button>';
+        }).join('') + '</div></div>';
+    });
+    if (!dates.length) html += '<p>Nothing to jump to yet.</p>';
+    openSheet(html);
+    var cur = $('jm-' + (curMonth || todayISO.slice(0, 7)));
+    if (cur) $('sheet').scrollTop = cur.offsetTop - $('sheet').offsetTop - 8;
+  }
   function scrollToEl(el, smooth) {
     if (!el) return;
     var y = el.getBoundingClientRect().top + window.pageYOffset - $('bar').getBoundingClientRect().bottom - mbarH;
@@ -240,54 +262,6 @@
     if (!el) { var after = shownDates.filter(function (d) { return d >= todayISO; })[0] || shownDates[shownDates.length - 1]; el = after ? $('d-' + after) : null; }
     scrollToEl(el, smooth);
   }
-
-  // ---------- scrub rail ----------
-  var PAD = 10;
-  function railY(i, n, H) { return n === 1 ? H / 2 : PAD + i * (H - 2 * PAD) / (n - 1); }
-  function buildRail() {
-    var rail = $('rail'), H = rail.clientHeight, n = shownDates.length;
-    if (!n) { rail.innerHTML = ''; return; }
-    var html = '', lastM = '', lastY = -99;
-    shownDates.forEach(function (d, i) {
-      var y = railY(i, n, H), mk = d.slice(0, 7);
-      if (mk !== lastM && y - lastY >= 13) { html += '<span class="rm" style="top:' + y + 'px">' + MON[+d.slice(5, 7) - 1] + '</span>'; lastY = y; lastM = mk; return; }
-      lastM = mk;
-      if (y - lastY >= 11) { html += '<span class="rd' + (d === todayISO ? ' now' : '') + '" style="top:' + y + 'px">' + (+d.slice(8)) + '</span>'; lastY = y; }
-      else html += '<span class="rt" style="top:' + y + 'px"></span>';
-    });
-    rail.innerHTML = html + '<span id="rind" class="rind"></span>';
-    updInd();
-  }
-  function railIndex(clientY) {
-    var r = $('rail').getBoundingClientRect(), n = shownDates.length;
-    if (n === 1) return 0;
-    return Math.max(0, Math.min(n - 1, Math.round((clientY - r.top - PAD) / (r.height - 2 * PAD) * (n - 1))));
-  }
-  var scrubbing = false;
-  function scrubTo(clientY) {
-    var d = shownDates[railIndex(clientY)];
-    scrollToEl($('d-' + d), false);
-    var b = $('bub'); b.textContent = longLabel(d); b.style.top = clientY + 'px'; b.hidden = false;
-  }
-  $('rail').addEventListener('pointerdown', function (e) {
-    if (!shownDates.length) return;
-    scrubbing = true;
-    try { $('rail').setPointerCapture(e.pointerId); } catch (x) {}
-    scrubTo(e.clientY); e.preventDefault();
-  });
-  $('rail').addEventListener('pointermove', function (e) { if (scrubbing) scrubTo(e.clientY); });
-  function endScrub() { scrubbing = false; $('bub').hidden = true; }
-  $('rail').addEventListener('pointerup', endScrub);
-  $('rail').addEventListener('pointercancel', endScrub);
-  function updInd() {
-    var ind = $('rind'); if (!ind || !shownDates.length) return;
-    var line = $('bar').getBoundingClientRect().bottom + mbarH + 2, groups = document.querySelectorAll('.dgrp, .nowline'), idx = groups.length - 1;
-    for (var k = 0; k < groups.length; k++) { if (groups[k].getBoundingClientRect().bottom > line) { idx = k; break; } }
-    var i = shownDates.indexOf(groups[idx] ? groups[idx].id.slice(2) : '');
-    ind.style.top = railY(Math.max(0, i), shownDates.length, $('rail').clientHeight) + 'px';
-  }
-  var ticking = false;
-  window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(function () { ticking = false; updInd(); }); } }, { passive: true });
 
   // =====================================================================
   // Sheets: add, check, edit
@@ -684,6 +658,8 @@
   $('ask').addEventListener('click', showAsk);
   $('more').addEventListener('click', showMenu);
   $('list').addEventListener('click', function (e) {
+    var mb = e.target.closest('.mbar');
+    if (mb) { showJump(mb.getAttribute('data-m')); return; }
     var d = e.target.closest('[data-del]');
     if (d) { openRow = null; removeItem(d.getAttribute('data-del')); return; }
     var b = e.target.closest('button[data-id]'); if (!b) return;
@@ -715,8 +691,10 @@
     else if (act === 'export') doExport();
     else if (act === 'lock') lockNow();
     else if (act === 'update') installUpdate();
+    else if (act === 'jump') { var day = b.getAttribute('data-day'); closeSheet(); scrollToEl($('d-' + day), true); }
+    else if (act === 'jump-today') { closeSheet(); $('q').value = ''; render(); jumpToday(true); }
   });
-  window.addEventListener('resize', function () { if (unlocked) { syncHead(); buildRail(); } });
+  window.addEventListener('resize', function () { if (unlocked) syncHead(); });
 
   // =====================================================================
   // Start
