@@ -46,6 +46,15 @@ input, textarea, select { font-family: var(--mono); }
 .ck .o { font-size: 0.62rem; font-weight: 700; color: var(--muted); margin-left: 0.1rem; vertical-align: top; }
 .ck.open { border-color: var(--amber); }
 .ck.open .h, .ck.open .c { color: var(--amber); }
+.ck.home { border-color: var(--cyan); }
+.ck.home .h, .ck.home .c { color: var(--cyan); }
+.ck.home.open { box-shadow: inset 3px 0 0 var(--amber); }
+.chip.fin { border-color: var(--cyan); }
+.chip.fin[aria-pressed="true"] { color: var(--cyan); background: var(--bg); border-color: var(--cyan); }
+.chip.fin[aria-pressed="true"] .n { color: var(--cyan); }
+.dgrp li.fin .t b { color: var(--cyan); font-weight: 700; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.8rem; font-size: 0.95rem; }
+.kv span:nth-child(odd) { color: var(--muted); }
 .r1 { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .brand { font-weight: 800; color: var(--amber); letter-spacing: 0.08em; }
 .clock { color: var(--muted); font-size: 0.8rem; margin-right: auto; white-space: nowrap; }
@@ -181,6 +190,7 @@ textarea { min-height: 9rem; resize: vertical; }
 <div id="lock" class="lock"><div id="lockbox" class="lockbox"><h1>GLENCAL</h1></div></div>
 <script src="parser.js"></script>
 <script src="holidays.js"></script>
+<script src="finance.js"></script>
 <script src="vault.js"></script>
 <script src="app.js"></script>
 </body>

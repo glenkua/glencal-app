@@ -180,7 +180,7 @@
     { c: 'WELLINGTON', tz: 'Pacific/Auckland', s: [[600, 1005]], x: 'NZX 10:00-16:45' },
     { c: 'SYDNEY', tz: 'Australia/Sydney', s: [[600, 960]], x: 'ASX 10:00-16:00' },
     { c: 'TOKYO', tz: 'Asia/Tokyo', s: [[540, 690], [750, 930]], x: 'TSE 9:00-11:30, 12:30-15:30' },
-    { c: 'SG·HK', tz: 'Asia/Singapore', s: [[540, 720], [780, 1020]], x: 'SGX 9:00-12:00, 13:00-17:00' },
+    { c: 'SG·HK', home: true, tz: 'Asia/Singapore', s: [[540, 720], [780, 1020]], x: 'SGX 9:00-12:00, 13:00-17:00' },
     { c: 'LONDON', tz: 'Europe/London', s: [[480, 990]], x: 'LSE 8:00-16:30' },
     { c: 'NEW YORK', tz: 'America/New_York', s: [[570, 960]], x: 'NYSE 9:30-16:00' }
   ];
@@ -199,7 +199,7 @@
       var weekday = z.wd !== 'Sat' && z.wd !== 'Sun';
       var open = weekday && k.s.some(function (r) { return mins >= r[0] && mins < r[1]; });
       var diff = Math.round((GC.fromISO(z.ymd) - GC.fromISO(here)) / 86400000);
-      html += '<div class="ck' + (open ? ' open' : '') + '" title="' + k.x + (open ? ' (open)' : ' (closed)') + '">' +
+      html += '<div class="ck' + (open ? ' open' : '') + (k.home ? ' home' : '') + '" title="' + k.x + (open ? ' (open)' : ' (closed)') + '">' +
         '<span class="c">' + k.c + '</span><span class="h">' + ('0' + z.h).slice(-2) + ':' + ('0' + z.m).slice(-2) +
         (diff ? '<span class="o">' + (diff > 0 ? '+' : '−') + Math.abs(diff) + '</span>' : '') + '</span></div>';
     });
@@ -207,7 +207,9 @@
   }
   renderClocks();
   setInterval(renderClocks, 15000);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) renderClocks(); });
+  loadFinance();
+  setInterval(loadFinance, 30 * 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); } });
 
   // =====================================================================
   // Feed
@@ -229,9 +231,53 @@
     });
   }
   function allEntries() { return items.concat(holidayItems()); }
+
+  // ---- Finance tab: official schedules (finance.js) + live high-impact feed (data/finance-live.json) ----
+  var finLive = { items: [], updated: '' };
+  function loadFinance() {
+    fetch('data/finance-live.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (!d || !d.items) return;
+      finLive = d;
+      if (unlocked) { renderChips(); if (activeCat === 'finance') render(); }
+    }).catch(function () {});
+  }
+  var CB_RE = /rate|monetary policy|policy statement|press conference|statement/i;
+  function financeItems() {
+    var live = finLive.items || [], st = (typeof FIN_STATIC === 'undefined') ? [] : FIN_STATIC;
+    var liveDates = live.map(function (x) { return x.date; }).sort();
+    var lo = liveDates[0] || '', hi = liveDates[liveDates.length - 1] || '';
+    var liveByKey = {};
+    live.forEach(function (x) { var k = x.ccy + '|' + x.date; (liveByKey[k] = liveByKey[k] || []).push(x); });
+    var dropLive = {}, out = [];
+    st.forEach(function (x, n) {
+      var same = liveByKey[x.ccy + '|' + x.date] || [];
+      var inLive = lo && x.date >= lo && x.date <= hi;
+      if (x.kind === 'data' && inLive && same.some(function (l) { return l.kind === 'data'; })) return;   // live feed has the detail
+      var e = { id: 'fin-s' + n, date: x.date, time: x.time, ccy: x.ccy, kind: x.kind, raw: x.title, info: x.note, check: x.check, src: 'official' };
+      if (x.kind === 'cb') {
+        same.forEach(function (l) {
+          if (l.kind === 'cb' || CB_RE.test(l.title)) {
+            dropLive[l.id] = 1;
+            if (l.forecast && !e.forecast) { e.forecast = l.forecast; e.previous = l.previous; e.liveTitle = l.title; }
+          }
+        });
+      }
+      out.push(e);
+    });
+    live.forEach(function (l) {
+      if (dropLive[l.id]) return;
+      out.push({ id: 'fin-' + l.id, date: l.date, time: l.time, ccy: l.ccy, kind: l.kind, raw: l.title, forecast: l.forecast, previous: l.previous, src: 'live' });
+    });
+    return out.map(function (e) {
+      var fp = [e.forecast ? 'F ' + e.forecast : '', e.previous ? 'P ' + e.previous : ''].filter(Boolean).join(' · ');
+      e.title = e.ccy + ' ' + e.raw + (e.check ? ' (check)' : '');
+      e.note = fp; e.place = ''; e.cat = 'finance'; e.finance = true; e.emoji = e.kind === 'cb' ? '🏦' : '📊';
+      return e;
+    });
+  }
   function visible() {
     var q = $('q').value.trim().toLowerCase();
-    return allEntries().filter(function (i) {
+    return (activeCat === 'finance' ? financeItems() : allEntries()).filter(function (i) {
       if (activeCat !== 'all' && catOf(i) !== activeCat) return false;
       return !q || [i.title, i.place, i.note, i.src].join(' ').toLowerCase().indexOf(q) >= 0;
     });
@@ -240,12 +286,14 @@
     var counts = {};
     var all = allEntries();
     all.forEach(function (i) { var c = catOf(i); counts[c] = (counts[c] || 0) + 1; });
-    if (activeCat !== 'all' && !counts[activeCat]) activeCat = 'all';
+    if (activeCat !== 'all' && activeCat !== 'finance' && !counts[activeCat]) activeCat = 'all';
     var html = '<button class="chip" type="button" data-cat="all" aria-pressed="' + (activeCat === 'all') + '">All<span class="n">' + all.length + '</span></button>';
     GC.CATS.forEach(function (c) {
       if (!counts[c.id]) return;
       html += '<button class="chip" type="button" data-cat="' + c.id + '" aria-pressed="' + (activeCat === c.id) + '">' + c.emoji + ' ' + esc(c.name) + '<span class="n">' + counts[c.id] + '</span></button>';
     });
+    html += '<button class="chip fin" type="button" data-cat="finance" aria-pressed="' + (activeCat === 'finance') + '">📈 Finance<span class="n">' +
+      financeItems().filter(function (x) { return x.date >= todayISO; }).length + '</span></button>';
     $('chips').innerHTML = html;
   }
 
@@ -278,13 +326,13 @@
           list.map(function (i, k) {
             var c = GC.CAT_BY_ID[catOf(i)];
             var days = Math.round((GC.fromISO(d) - GC.fromISO(todayISO)) / 86400000);
-            return '<li' + (i.holiday ? ' class="hol"' : '') + '>' +
-              (i.holiday ? '' : '<div class="swipe-del"><button type="button" data-del="' + esc(i.id) + '">DELETE</button></div>') +
+            return '<li' + (i.holiday ? ' class="hol"' : i.finance ? ' class="fin"' : '') + '>' +
+              (i.holiday || i.finance ? '' : '<div class="swipe-del"><button type="button" data-del="' + esc(i.id) + '">DELETE</button></div>') +
               '<button class="item" type="button" data-id="' + esc(i.id) + '">' +
               '<span class="dc">' + (k === 0 ? l.day + ' <span class="w">' + l.dow + '</span>' : '') + '</span>' +
               '<span class="tm">' + (i.time ? esc(GC.fmtTime(i.time)) : '') + '</span>' +
-              '<span class="emo" aria-hidden="true">' + c.emoji + '</span>' +
-              '<span class="t">' + esc(i.title) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
+              '<span class="emo" aria-hidden="true">' + (i.emoji || c.emoji) + '</span>' +
+              '<span class="t">' + (i.finance ? '<b>' + esc(i.ccy) + '</b> ' + esc(i.raw) + (i.check ? '<span class="pl"> (check)</span>' : '') : esc(i.title)) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
               (i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span>' +
               '<span class="cd">' + (k === 0 && days > 0 ? days + 'D' : '') + '</span></button></li>';
           }).join('') + '</ul>';
@@ -336,7 +384,7 @@
   function openSheet(html) { $('sheet').innerHTML = html; $('scrim').hidden = false; }
   function closeSheet() { $('scrim').hidden = true; $('sheet').innerHTML = ''; }
   function catOptions(sel) {
-    return GC.CATS.filter(function (c) { return c.id !== 'holiday'; }).map(function (c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + c.emoji + ' ' + esc(c.name) + '</option>'; }).join('');
+    return GC.CATS.filter(function (c) { return c.id !== 'holiday' && c.id !== 'finance'; }).map(function (c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + c.emoji + ' ' + esc(c.name) + '</option>'; }).join('');
   }
   function fieldsHTML(i, n) {
     return '<div class="f">' +
@@ -429,6 +477,20 @@
       '<p class="small">' + (h.est
         ? 'Estimated. MOM has not published the ' + h.date.slice(0, 4) + ' dates yet; holidays that follow the lunar or Islamic calendar may move by a day. The official date will replace this once it is announced.'
         : 'Official date from the Ministry of Manpower.') + '</p>' +
+      '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
+  }
+  function showFinance(id) {
+    var f = financeItems().filter(function (x) { return x.id === id; })[0];
+    if (!f) return;
+    var rows = [['When', longLabel(f.date) + ' ' + f.date.slice(0, 4) + (f.time ? ', ' + GC.fmtTime(f.time) + ' Singapore' : ', time not fixed')],
+      ['Currency', f.ccy]];
+    if (f.forecast) rows.push(['Forecast', f.forecast]);
+    if (f.previous) rows.push(['Previous', f.previous]);
+    openSheet('<h2>' + f.emoji + ' ' + esc(f.ccy + ' ' + f.raw) + '</h2><div class="kv">' +
+      rows.map(function (r) { return '<span>' + r[0] + '</span><span>' + esc(r[1]) + '</span>'; }).join('') + '</div>' +
+      (f.info ? '<p class="small">' + esc(f.info) + '</p>' : '') +
+      '<p class="small">' + (f.src === 'official' ? 'Date from the official published schedule.' + (f.liveTitle ? ' Forecast from the live calendar (' + esc(f.liveTitle) + ').' : '')
+        : 'From the live high-impact calendar' + (finLive.updated ? ', updated ' + esc(finLive.updated) + ' Singapore time' : '') + '. Forecasts are market consensus and can change.') + '</p>' +
       '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
   }
   function saveOne() {
@@ -574,7 +636,7 @@
   function contextFor(q) {
     var words = q.toLowerCase().split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2 && !STOP[w]; });
     var lo = GC.iso(GC.addDays(new Date(), -14)), hi = GC.iso(GC.addDays(new Date(), 45));
-    var scored = allEntries().map(function (e) {
+    var scored = allEntries().concat(financeItems()).map(function (e) {
       var hay = [e.title, e.place, e.note, GC.CAT_BY_ID[catOf(e)].name].join(' ').toLowerCase();
       var hit = words.some(function (w) { return hay.indexOf(w) >= 0; });
       return { e: e, keep: hit || (e.date >= lo && e.date <= hi), hit: hit };
@@ -675,7 +737,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 25adfb41c38c</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f6c2b5f5c87e</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -746,6 +808,7 @@
     if (openRow) { closeOpen(); return; }
     var id = b.getAttribute('data-id');
     if (id.indexOf('hol-') === 0) { showHoliday(id); return; }
+    if (id.indexOf('fin-') === 0) { showFinance(id); return; }
     showEdit(id);
   });
   $('scrim').addEventListener('click', function (e) { if (e.target === $('scrim') && !askBusy) closeSheet(); });
