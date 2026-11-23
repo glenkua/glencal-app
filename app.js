@@ -596,7 +596,7 @@
       '<button class="btn" type="button" data-act="export">Export backup</button>' +
       '<button class="btn" type="button" data-act="lock">Lock now</button>' +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.<br>Version 662780ea70fe</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
