@@ -375,8 +375,62 @@ var Tools = (function () {
       'Tax: IRAS resident rates from YA2024 onwards; income earned in 2026 is taxed in YA2027. Reliefs are capped at $80,000. No personal tax rebate has been announced for YA2026 or YA2027; enter one if it is. CPF rounding and other income are not included.</p>';
   }
 
+  // ---------- INTEREST: loans and deposits ----------
+  var ln = { amt: '1,000,000', rate: '3.5', tenor: '5', unit: 'y', freq: '12', type: 'annuity', basis: '365' };
+  var LN_TYPES = [['annuity', 'Amortising, equal instalments (like a mortgage)'], ['linear', 'Amortising, equal principal'],
+                  ['bullet', 'Non-amortising (interest only, principal at end)'], ['simple', 'Simple interest, paid at maturity']];
+  function lnCalc() {
+    var A = parseNum(ln.amt), R = parseNum(ln.rate) / 100, n0 = parseNum(ln.tenor), f = +ln.freq;
+    if (!(A > 0) || !isFinite(R) || !(n0 > 0)) return null;
+    var years = ln.unit === 'd' ? n0 / 365 : ln.unit === 'm' ? n0 / 12 : n0;
+    if (ln.type === 'simple') {
+      var days = ln.unit === 'd' ? n0 : Math.round(years * 365), interest = A * R * days / +ln.basis;
+      return { simple: true, days: days, interest: interest, total: A + interest, rows: [] };
+    }
+    var N = Math.round(years * f);
+    if (N < 1) return { err: 'The tenor is shorter than one payment period. Pick a shorter frequency or use simple interest.' };
+    var r = R / f, bal = A, rows = [], pay = 0;
+    if (ln.type === 'annuity') pay = Math.abs(r) < 1e-12 ? A / N : A * r / (1 - Math.pow(1 + r, -N));
+    for (var k = 1; k <= N; k++) {
+      var int = bal * r, prin = ln.type === 'annuity' ? pay - int : ln.type === 'linear' ? A / N : (k === N ? bal : 0);
+      if (k === N) prin = bal;   // clear any rounding left on the last payment
+      bal -= prin;
+      rows.push([k, int + prin, int, prin, Math.max(0, bal)]);
+    }
+    var ti = rows.reduce(function (t, x) { return t + x[2]; }, 0);
+    return { N: N, rows: rows, interest: ti, total: A + ti, first: rows[0][1], last: rows[rows.length - 1][1], periodInt: A * r };
+  }
+  function lnHTML() {
+    var c = lnCalc(), PER = { '12': 'month', '4': 'quarter', '2': 'half-year', '1': 'year' }, per = PER[ln.freq];
+    var sel = function (id, opts, v) { return '<select id="' + id + '">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'; };
+    var h = '<div class="f"><label>Type' + sel('ln-type', LN_TYPES, ln.type) + '</label>' +
+      '<div class="two"><label>Amount<input id="ln-amt" inputmode="decimal" value="' + esc(ln.amt) + '"></label>' +
+      '<label>Rate % per year<input id="ln-rate" inputmode="decimal" value="' + esc(ln.rate) + '"></label></div>' +
+      '<div class="two"><label>Tenor<span class="solve"><input id="ln-tenor" inputmode="decimal" value="' + esc(ln.tenor) + '">' +
+        sel('ln-unit', [['d', 'days'], ['m', 'months'], ['y', 'years']], ln.unit) + '</span></label>' +
+      (ln.type === 'simple'
+        ? '<label>Day count' + sel('ln-basis', [['365', 'ACT/365 (SGD, GBP, HKD)'], ['360', 'ACT/360 (USD, EUR, most others)']], ln.basis) + '</label>'
+        : '<label>Payments' + sel('ln-freq', [['12', 'Monthly'], ['4', 'Quarterly'], ['2', 'Semi-annual'], ['1', 'Annual']], ln.freq) + '</label>') +
+      '</div></div>';
+    if (!c) return h + '<p class="small">Enter an amount, rate and tenor.</p>';
+    if (c.err) return h + '<p class="err">' + esc(c.err) + '</p>';
+    var $$ = function (v) { return fmt(v, 2); };
+    var row = function (k, v, b) { return '<tr><td>' + (b ? '<b>' + k + '</b>' : k) + '</td><td>' + (b ? '<b>' + v + '</b>' : v) + '</td></tr>'; };
+    if (c.simple) return h + '<table class="mt">' + row('Days', fmt(c.days, 0)) + row('Interest at maturity', $$(c.interest), true) +
+      row('Total repaid', $$(c.total)) + '</table><p class="small">Interest = amount × rate × days / ' + ln.basis + '. Months and years are converted at 365 days a year.</p>';
+    h += '<table class="mt">' +
+      (ln.type === 'annuity' ? row('Payment each ' + per, $$(c.first), true)
+        : ln.type === 'linear' ? row('First payment', $$(c.first), true) + row('Last payment', $$(c.last))
+        : row('Interest each ' + per, $$(c.periodInt), true) + row('Final payment (interest + principal)', $$(c.last))) +
+      row('Number of payments', fmt(c.N, 0)) + row('Total interest', $$(c.interest), true) + row('Total paid', $$(c.total)) + '</table>';
+    h += '<details class="sched"><summary>Payment schedule (' + c.N + ' payments)</summary><table class="mt sch"><tr><td>#</td><td>Payment</td><td>Interest</td><td>Principal</td><td>Balance</td></tr>' +
+      c.rows.map(function (x) { return '<tr><td>' + x[0] + '</td><td>' + $$(x[1]) + '</td><td>' + $$(x[2]) + '</td><td>' + $$(x[3]) + '</td><td>' + $$(x[4]) + '</td></tr>'; }).join('') + '</table></details>' +
+      '<p class="small">Interest each period = balance × rate ÷ payments per year. Figures are unrounded estimates; your bank may round each payment.</p>';
+    return h;
+  }
+
   // ---------- shell ----------
-  var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg'], ['sgtax', 'SG Tax'], ['pace', 'Pace']];
+  var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg'], ['loan', 'Interest'], ['sgtax', 'SG Tax'], ['pace', 'Pace']];
   function chipsHTML() {
     return TOOLS.map(function (t) { return '<button class="chip" type="button" data-tool="' + t[0] + '" aria-pressed="' + (tool === t[0]) + '">' + t[1] + '</button>'; }).join('');
   }
@@ -384,7 +438,7 @@ var Tools = (function () {
     if (!root) return;
     var focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : null;
     var pos = focused && document.activeElement.selectionStart;
-    root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : tool === 'pace' ? paceHTML() : tool === 'sgtax' ? sgHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div></div>';
+    root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : tool === 'pace' ? paceHTML() : tool === 'sgtax' ? sgHTML() : tool === 'loan' ? lnHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div></div>';
     var ch = document.getElementById('chist'); if (ch) ch.scrollTop = ch.scrollHeight;
     if (focused && document.getElementById(focused)) {   // keep typing position while results update
       var el = document.getElementById(focused); el.focus();
@@ -400,6 +454,7 @@ var Tools = (function () {
     else if (id.indexOf('tvm-') === 0) { var k = id.slice(4); if (k === 'BG') tvm.BEGIN = v === '1'; else tvm[k] = v; return; }   // TVM recalculates on Solve only
     else if (id.indexOf('rt-') === 0) rt[id.slice(3)] = v;
     else if (id.indexOf('sg-') === 0) sg[id.slice(3)] = v;
+    else if (id.indexOf('ln-') === 0) ln[id.slice(3)] = v;
     else if (id === 'pc2-unit') return setUnit(v);
     else if (id.indexOf('pc2-') === 0) { var pk = id.slice(4); pace[pk] = v; if (pk === 'pace' || pk === 'speed') pace.src = pk; return; }   // recalculated on Solve
     else if (id === 'pc-jpy') pc.jpy = v === '1';
@@ -439,6 +494,6 @@ var Tools = (function () {
     setTape: function (list) { tape = (list || []).filter(function (t) { return t && isFinite(t.r); }).slice(0, TAPE_MAX); ans = tape.length ? tape[0].r : 0; },
     select: function (t) { tool = t; draw(); },
     draw: draw,
-    _test: { sg: sg, sgCalc: sgCalc, sgTax: sgTax, groupStr: groupStr, groupExpr: groupExpr, liveFormat: liveFormat, rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
+    _test: { ln: ln, lnCalc: lnCalc, sg: sg, sgCalc: sgCalc, sgTax: sgTax, groupStr: groupStr, groupExpr: groupExpr, liveFormat: liveFormat, rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
   };
 })();
