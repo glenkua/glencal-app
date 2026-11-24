@@ -156,7 +156,7 @@
     document.body.classList.remove('covered');
     setClock();
     refresh();
-    setTimeout(function () { syncHead(); jumpToday(false); }, 0);
+    setTimeout(function () { setTab('brief'); }, 0);
   }
 
   function lockNow() {
@@ -258,9 +258,9 @@
     });
   }
   function loadMarkets() {
-    var url = mktURL(); if (!url || document.hidden) return;
-    fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { if (d && d.items) { MKT = d; renderTicker(); try { localStorage.setItem('glencal.mkt', JSON.stringify(d)); } catch (e) {} if (tab === 'tools') Tools.draw(); } }).catch(function () {});
+    var url = mktURL(); if (!url || document.hidden) return Promise.resolve();
+    return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.items) { MKT = d; renderTicker(); if (tab === 'brief') renderBrief(); try { localStorage.setItem('glencal.mkt', JSON.stringify(d)); } catch (e) {} if (tab === 'tools') Tools.draw(); } }).catch(function () {});
   }
   function showMarkets() {
     if (!MKT) return;
@@ -280,12 +280,12 @@
   setInterval(renderClocks, 15000);
   loadFinance();
   setInterval(loadFinance, 30 * 60000);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); loadMarkets(); if (tab === 'news') loadNews(); if (tab === 'fan') loadFantasy(); } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); loadMarkets(); if (tab === 'news') loadNews(); if (tab === 'fan') loadFantasy(); if (tab === 'brief') { loadNews(); renderBrief(); } } });
 
   // =====================================================================
   // News: headlines collected by a GitHub job every ~10 min (same branch as the ticker)
   // =====================================================================
-  var tab = 'cal', NEWS = null;
+  var tab = 'brief', NEWS = null;
   var newsHidden = {};
   (prefs('newsHidden') || '').split(',').forEach(function (k) { if (k) newsHidden[k] = 1; });
   function newsTags(n) {
@@ -300,7 +300,7 @@
   function loadNews() {
     var url = newsURL(); if (!url || document.hidden) return Promise.resolve();
     return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { if (d && d.items) { NEWS = d; if (tab === 'news') renderNews(); } }).catch(function () {});
+      .then(function (d) { if (d && d.items) { NEWS = d; if (tab === 'news') renderNews(); if (tab === 'brief') renderBrief(); } }).catch(function () {});
   }
   var NEWS_CHIPS = [['all', 'All'], ['cb', '★ Central banks'], ['sg', '🇸🇬 SG'], ['other', 'General'], ['USD', 'USD'], ['EUR', 'EUR'], ['JPY', 'JPY'], ['GBP', 'GBP'], ['AUD', 'AUD'], ['NZD', 'NZD'], ['SGD', 'SGD']];
   function renderNewsChips() {
@@ -332,22 +332,100 @@
     if (!list.length) html += '<p class="empty">NO MATCHES</p>';
     $('news').innerHTML = html;
   }
+  // =====================================================================
+  // Morning brief: today, the next 24h of ECON, markets, top headlines
+  // =====================================================================
+  function stamp(d) { return GC.iso(d) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function briefRows(list, econ) {
+    return list.map(function (e) {
+      var c = GC.CAT_BY_ID[catOf(e)];
+      var days = Math.round((GC.fromISO(e.date) - GC.fromISO(todayISO)) / 86400000);
+      var title = e.finance ? (e.kind === 'cb' ? '<span class="star">★</span> ' : '') + '<b class="ccy">' + esc(e.ccy) + '</b> ' + esc(e.raw)
+        : esc(e.title) + (e.age ? ' (' + e.age + ')' : '') + (e.isDue ? '<span class="due">' + (e.paid ? 'PAID' : 'DUE') + '</span>' : '');
+      return '<button type="button" class="brow' + (e.finance && e.kind === 'cb' ? ' cb' : '') + '" data-bid="' + esc(e.id) + '">' +
+        '<span class="tm">' + (e.time ? esc(GC.fmtTime(e.time)) : '') + '</span><span class="emo" aria-hidden="true">' + (e.emoji || c.emoji) + '</span>' +
+        '<span class="t">' + title + (e.place ? '<span class="pl"> @ ' + esc(e.place) + '</span>' : '') +
+        (e.noteHTML ? '<span class="note">' + e.noteHTML + '</span>' : e.note && !e.bill ? '<span class="note">' + esc(e.note) + '</span>' : '') + '</span>' +
+        '<span class="cd">' + (econ && days === 1 ? 'TMR' : '') + '</span></button>';
+    }).join('');
+  }
+  function renderBrief() {
+    if (!unlocked) return;
+    var now = new Date(), h = now.getHours(), l = dLabel(todayISO), tmr = GC.iso(GC.addDays(now, 1));
+    var byTime = function (a, b) { return (a.time || '') < (b.time || '') ? -1 : 1; };
+    var mineOf = function (d) { return allEntries().filter(function (e) { return e.date === d && !(e.bill && !e.isDue); }).sort(byTime); };
+    var html = '<div class="bhead">' + (h < 12 ? 'GOOD MORNING' : h < 18 ? 'GOOD AFTERNOON' : 'GOOD EVENING') + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + '</div>';
+
+    // today / tomorrow
+    var today = mineOf(todayISO), tom = mineOf(tmr);
+    html += '<section class="bsec"><h2 class="mbar"><span>TODAY</span><span class="n">' + today.length + '</span></h2>' +
+      (today.length ? briefRows(today) : '<p class="bnone">Nothing scheduled today.</p>');
+    if (tom.length) html += '<div class="bsub">TOMORROW</div>' + briefRows(tom.slice(0, 4)) + (tom.length > 4 ? '<p class="bnone">+' + (tom.length - 4) + ' more</p>' : '');
+    html += '</section>';
+
+    // ECON: released in the last 3 hours, or due in the next 24
+    var lo = stamp(new Date(now - 3 * 3600e3)), hi = stamp(new Date(now.getTime() + 24 * 3600e3));
+    var econ = financeItems().filter(function (e) { var k = e.date + ' ' + (e.time || '12:00'); return k >= lo && k <= hi; })
+      .sort(function (a, b) { return (a.date + (a.time || '12:00')) < (b.date + (b.time || '12:00')) ? -1 : 1; });
+    html += '<section class="bsec"><h2 class="mbar"><span>ECON · NEXT 24H</span><span class="n">' + econ.length + '</span></h2>' +
+      (econ.length ? briefRows(econ, true) : '<p class="bnone">No tier-1 releases in the next 24 hours.</p>') + '</section>';
+
+    // markets
+    var tk = MKT && MKT.items ? MKT.items.filter(function (q) { return q.tk !== false; }) : [];
+    html += '<section class="bsec"><h2 class="mbar"><span>MARKETS · VS PREVIOUS CLOSE</span></h2>' + (tk.length ? '<div class="bgrid">' + tk.map(function (q) {
+      var f = fmtQ(q);
+      return '<div class="bq"><b>' + esc(q.k) + '</b><span class="v">' + f.v + ' <span style="color:var(--' + (f.cls === 'up' ? 'up' : f.cls === 'dn' ? 'red' : 'muted') + ')">' + f.ch + '</span></span></div>';
+    }).join('') + '</div>' : '<p class="bnone">Loading prices…</p>') + '</section>';
+
+    // headlines: central banks, then FX/rates/macro, then Singapore
+    var picks = [];
+    if (NEWS && NEWS.items) {
+      var since = stamp(new Date(now - 14 * 3600e3)), seen = {};
+      var take = function (pred, n) {
+        NEWS.items.filter(function (x) { return x.t >= since && !seen[x.url] && pred(x); }).slice(0, n).forEach(function (x) { seen[x.url] = 1; picks.push(x); });
+      };
+      take(function (x) { return x.cb; }, 3);
+      take(function (x) { return x.kind === 'macro' && !x.sg; }, 6);
+      take(function (x) { return x.sg; }, 3);
+    }
+    html += '<section class="bsec"><h2 class="mbar"><span>HEADLINES · LAST 14H</span></h2>' + (picks.length ? picks.map(function (n) {
+      return '<a class="nrow' + (n.cb ? ' cb' : '') + '" href="' + esc(n.url) + '" target="_blank" rel="noopener noreferrer">' +
+        '<span class="nt">' + esc(n.t.slice(11)) + '</span><span class="ns">' + esc(n.src) + '</span>' +
+        '<span class="nh">' + (n.cb ? '<span class="star">★</span> ' : '') + (n.sg ? '🇸🇬 ' : '') + esc(n.title) + '</span></a>';
+    }).join('') : '<p class="bnone">' + (NEWS ? 'Nothing major in the last 14 hours.' : 'Loading headlines…') + '</p>') + '</section>';
+
+    html += '<div class="bfoot">Prices and headlines are delayed (about 10–30 minutes). Pull down to refresh.' +
+      (MKT && MKT.updated ? ' Prices ' + esc(MKT.updated.slice(11)) + '.' : '') + (NEWS && NEWS.updated ? ' Headlines ' + esc(NEWS.updated.slice(11)) + '.' : '') + '</div>';
+    $('brief').innerHTML = html;
+  }
+  $('brief').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-bid]'); if (!b) return;
+    var id = b.getAttribute('data-bid');
+    if (id.indexOf('hol-') === 0) showHoliday(id);
+    else if (id.indexOf('fin-') === 0) showFinance(id);
+    else if (id.indexOf('bill-') === 0) showBill(id);
+    else showEdit(id);
+  });
+
   function setTab(t) {
     if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
     if (tab === 'fan' && t !== 'fan' && FAN) { fanSeen = FAN.items.length ? FAN.items[0].t : fanSeen; prefs('fanSeen', fanSeen); }
     tab = t;
-    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools';
+    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief';
+    $('tab-brief').setAttribute('aria-pressed', br); $('brief').hidden = !br;
     $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
-    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl; $('cmdrow').hidden = tl;
-    $('ask').hidden = !cal; $('jump').hidden = !cal; $('add').hidden = !cal;
+    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br; $('cmdrow').hidden = tl || br;
+    $('ask').hidden = !(cal || br); $('jump').hidden = !cal; $('add').hidden = !(cal || br);
     $('q').value = '';
     if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
     else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); SC().scrollTop = 0; }
     else if (tl) { $('tchips').innerHTML = Tools.chips(); Tools.draw(); SC().scrollTop = 0; }
+    else if (br) { renderBrief(); loadNews(); SC().scrollTop = 0; }
     else { showPast = false; render(); jumpToday(false); }
     syncHead();
   }
+  $('tab-brief').addEventListener('click', function () { setTab('brief'); });
   $('tab-cal').addEventListener('click', function () { setTab('cal'); });
   $('tab-news').addEventListener('click', function () { setTab('news'); });
   $('tab-fan').addEventListener('click', function () { setTab('fan'); });
@@ -515,10 +593,10 @@
   // ---- Finance tab: official schedules (finance.js) + live high-impact feed (data/finance-live.json) ----
   var finLive = { items: [], updated: '' };
   function loadFinance() {
-    fetch('data/finance-live.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+    return fetch('data/finance-live.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
       if (!d || !d.items) return;
       finLive = d;
-      if (unlocked) { renderChips(); if (econMode) render(); }
+      if (unlocked) { renderChips(); if (econMode) render(); if (tab === 'brief') renderBrief(); }
     }).catch(function () {});
   }
   var CB_RE = /rate|monetary policy|policy statement|press conference|statement/i;
@@ -676,7 +754,7 @@
   var showPast = false, PULL_AT = 70, pull = { y0: null, d: 0, on: false, busy: false };
   function pullText(d) {
     if (tab === 'cal') return showPast ? '' : d >= PULL_AT ? 'Release to show past events' : '↓ Pull to show past events';
-    return pull.busy ? 'Refreshing…' : d >= PULL_AT ? 'Release to refresh' : '↓ Pull to refresh';
+    return pull.busy ? 'Refreshing…' : d >= PULL_AT ? 'Release to refresh' : '↓ Pull to refresh';   // news, fantasy, brief
   }
   function setPull(d, anim) {
     var pw = $('pw');
@@ -708,7 +786,7 @@
       return;
     }
     pull.busy = true; setPull(48, true);
-    (tab === 'news' ? loadNews() : loadFantasy()).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
+    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : Promise.all([loadNews(), loadMarkets(), loadFinance()])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
   });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });   // no pinch zoom
 
@@ -1205,7 +1283,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 811090551789</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version e7de586334fa</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
