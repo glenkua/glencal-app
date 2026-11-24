@@ -433,7 +433,8 @@
       .sort(function (a, b) { return a.updated < b.updated ? 1 : -1; });
     var row = function (n) {
       var body = n.title ? n.body : (n.body || '').split('\n').slice(1).join('\n');
-      return '<div class="nwrap"><div class="swipe-del"><button type="button" data-ndel="' + esc(n.id) + '">DELETE</button></div>' +
+      return '<div class="nwrap"><div class="swipe-pin" aria-hidden="true">' + (n.pinned ? 'UNPIN' : '📌 PIN') + '</div>' +
+        '<div class="swipe-del"><button type="button" data-ndel="' + esc(n.id) + '">DELETE</button></div>' +
         '<button type="button" class="nnote" data-note="' + esc(n.id) + '"><span class="nt1">' + esc(noteTitle(n)) + '</span><span class="nd">' +
         (function () { var t = (n.body.match(/^\s*[☐☑] /gm) || []).length, d = (n.body.match(/^\s*☑ /gm) || []).length; return t ? '<span class="nck' + (d === t ? ' all' : '') + '">' + d + '/' + t + ' ✓</span> ' : ''; })() +
         esc(noteWhen(n.updated)) + '</span>' +
@@ -605,7 +606,11 @@
     var dx = e.clientX - nsw.x0, dy = e.clientY - nsw.y0;
     if (nsw.horiz === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) nsw.horiz = Math.abs(dx) > Math.abs(dy);
     if (!nsw.horiz) return;
-    nsw.dx = dx; nSet(nsw.el, Math.min(0, nsw.base + dx), false);
+    nsw.dx = dx;
+    var maxRight = nsw.base === 0 ? nsw.el.offsetWidth * 0.5 : 0;
+    nSet(nsw.el, Math.max(-nsw.el.offsetWidth, Math.min(maxRight, nsw.base + dx)), false);
+    var pinEl = nsw.el.parentNode.querySelector('.swipe-pin');
+    if (pinEl) pinEl.classList.toggle('ready', nsw.base + dx > nsw.el.offsetWidth * 0.33);
   });
   function nEnd() {
     if (!nsw) return;
@@ -613,6 +618,13 @@
     if (!s2.horiz) return;
     nJust = true; setTimeout(function () { nJust = false; }, 350);
     var w = s2.el.offsetWidth, act = s2.el.parentNode.querySelector('.swipe-del').offsetWidth, pos = s2.base + s2.dx;
+    if (pos > 0.33 * w) {   // swipe right: pin / unpin
+      var pid = s2.el.getAttribute('data-note'), pn = notes.filter(function (x) { return x.id === pid; })[0];
+      nSet(s2.el, 0, true); nOpen = null;
+      if (pn) { pn.pinned = !pn.pinned; persist(); setTimeout(function () { renderNotes(); flashToast(pn.pinned ? 'Pinned' : 'Unpinned'); }, 190); }
+      return;
+    }
+    if (pos > 0) { nSet(s2.el, 0, true); return; }
     if (pos < -0.6 * w) { nSet(s2.el, -w, true); setTimeout(function () { deleteNote(s2.el.getAttribute('data-note')); }, 170); nOpen = null; }
     else if (pos < -act / 2) { nSet(s2.el, -act, true); nOpen = s2.el; }
     else { nSet(s2.el, 0, true); if (nOpen === s2.el) nOpen = null; }
@@ -1513,7 +1525,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c3915c1cb783</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c869d78a5638</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {

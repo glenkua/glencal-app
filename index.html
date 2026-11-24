@@ -148,6 +148,8 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 /* notes */
 .nwrap { position: relative; overflow: hidden; }
 .nwrap .swipe-del { top: 1px; bottom: 1px; }
+.swipe-pin { position: absolute; top: 1px; bottom: 1px; left: 0; right: 0; display: flex; align-items: center; padding-left: 1rem; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.06em; color: var(--muted); background: var(--raise); }
+.swipe-pin.ready { color: var(--on-amber); background: var(--amber); }
 .nnote { position: relative; z-index: 1; background: var(--bg); touch-action: pan-y; }
 .nnote { all: unset; box-sizing: border-box; position: relative; z-index: 1; background: var(--bg); touch-action: pan-y; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.6rem; width: 100%; padding: 0.5rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .nnote .nt1 { font-weight: 700; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
