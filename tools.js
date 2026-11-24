@@ -398,7 +398,9 @@ var Tools = (function () {
 
   // ---------- INTEREST: loans and deposits ----------
   var ln = { amt: '1,000,000', rate: '3.5', tenor: '5', unit: 'y', freq: '12', type: 'annuity', basis: '365' };
+  // switching to the flat-rate type shows a typical car loan example
   var LN_TYPES = [['annuity', 'Amortising, equal instalments (like a mortgage)'], ['linear', 'Amortising, equal principal'],
+                  ['flat', 'Flat rate, monthly instalments (car loans)'],
                   ['bullet', 'Non-amortising (interest only, principal at end)'], ['simple', 'Simple interest, paid at maturity']];
   function lnCalc() {
     var A = parseNum(ln.amt), R = parseNum(ln.rate) / 100, n0 = parseNum(ln.tenor), f = +ln.freq;
@@ -411,6 +413,16 @@ var Tools = (function () {
     var N = Math.round(years * f);
     if (N < 1) return { err: 'The tenor is shorter than one payment period. Pick a shorter frequency or use simple interest.' };
     var r = R / f, bal = A, rows = [], pay = 0;
+    if (ln.type === 'flat') {
+      // interest on the ORIGINAL amount for the whole tenor, spread evenly over the instalments
+      var fi = A * R * (N / f), fpay = (A + fi) / N, fb = A;
+      for (var j = 1; j <= N; j++) { fb -= A / N; rows.push([j, fpay, fi / N, A / N, Math.max(0, fb)]); }
+      // equivalent reducing-balance rate: the rate at which these instalments repay A
+      var lo2 = 0, hi2 = 1;
+      for (var it = 0; it < 200; it++) { var m2 = (lo2 + hi2) / 2, pv = m2 < 1e-12 ? fpay * N : fpay * (1 - Math.pow(1 + m2, -N)) / m2; if (pv > A) lo2 = m2; else hi2 = m2; }
+      var pr = (lo2 + hi2) / 2;
+      return { N: N, rows: rows, interest: fi, total: A + fi, first: fpay, last: fpay, flat: true, eir: pr * f * 100, eff: (Math.pow(1 + pr, f) - 1) * 100 };
+    }
     if (ln.type === 'annuity') pay = Math.abs(r) < 1e-12 ? A / N : A * r / (1 - Math.pow(1 + r, -N));
     for (var k = 1; k <= N; k++) {
       var int = bal * r, prin = ln.type === 'annuity' ? pay - int : ln.type === 'linear' ? A / N : (k === N ? bal : 0);
@@ -440,13 +452,16 @@ var Tools = (function () {
     if (c.simple) return h + '<table class="mt">' + row('Days', fmt(c.days, 0)) + row('Interest at maturity', $$(c.interest), true) +
       row('Total repaid', $$(c.total)) + '</table><p class="small">Interest = amount × rate × days / ' + ln.basis + '. Months and years are converted at 365 days a year.</p>';
     h += '<table class="mt">' +
-      (ln.type === 'annuity' ? row('Payment each ' + per, $$(c.first), true)
+      (c.flat ? row('Payment each ' + per, $$(c.first), true) + row('Equivalent reducing-balance rate (EIR)', fmt(c.eir, 2) + '% a year') + row('As an annual compounded rate', fmt(c.eff, 2) + '%')
+        : ln.type === 'annuity' ? row('Payment each ' + per, $$(c.first), true)
         : ln.type === 'linear' ? row('First payment', $$(c.first), true) + row('Last payment', $$(c.last))
         : row('Interest each ' + per, $$(c.periodInt), true) + row('Final payment (interest + principal)', $$(c.last))) +
       row('Number of payments', fmt(c.N, 0)) + row('Total interest', $$(c.interest), true) + row('Total paid', $$(c.total)) + '</table>';
     h += '<details class="sched"><summary>Payment schedule (' + c.N + ' payments)</summary><table class="mt sch"><tr><td>#</td><td>Payment</td><td>Interest</td><td>Principal</td><td>Balance</td></tr>' +
       c.rows.map(function (x) { return '<tr><td>' + x[0] + '</td><td>' + $$(x[1]) + '</td><td>' + $$(x[2]) + '</td><td>' + $$(x[3]) + '</td><td>' + $$(x[4]) + '</td></tr>'; }).join('') + '</table></details>' +
-      '<p class="small">Interest each period = balance × rate ÷ payments per year. Figures are unrounded estimates; your bank may round each payment.</p>';
+      '<p class="small">' + (c.flat
+        ? 'Flat rate: interest = amount × rate × years, charged on the original amount even as you repay, so the true cost (EIR) is about double the flat rate. The schedule splits interest evenly; banks often use the Rule of 78 instead, which only matters if you repay early.'
+        : 'Interest each period = balance × rate ÷ payments per year.') + ' Figures are unrounded estimates; your bank may round each payment.</p>';
     return h;
   }
 
