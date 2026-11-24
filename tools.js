@@ -318,8 +318,65 @@ var Tools = (function () {
       '<p class="small">Fill in any two of distance, time and pace (or speed), then tap Solve on the one you want. Pace and speed are the same thing in different units; whichever you typed last is used.</p>';
   }
 
+  // ---------- SG TAX & CPF (employee, age 55 and below, Singapore Citizen / 3rd-year+ PR) ----------
+  // CPF Board 2026: employee 20%, employer 17%; Ordinary Wage ceiling $8,000/month; annual limit $102,000 (OW + AW).
+  // IRAS resident rates from YA2024 onwards. Earned Income Relief $1,000 (under 55). Reliefs capped at $80,000.
+  var CPF = { emp: 0.20, er: 0.17, owCap: 8000, annual: 102000 };
+  var BANDS = [[20000, 0], [30000, 2], [40000, 3.5], [80000, 7], [120000, 11.5], [160000, 15], [200000, 18], [240000, 19],
+               [280000, 19.5], [320000, 20], [500000, 22], [1000000, 23], [Infinity, 24]];
+  var sg = { salary: '10,000', months: '12', bonus: '30,000', other: '0', rebate: '0', rebateCap: '0' };
+  function sgTax(ci) {
+    var tax = 0, lo = 0, marg = 0;
+    for (var i = 0; i < BANDS.length; i++) {
+      var hi = BANDS[i][0], r = BANDS[i][1] / 100;
+      if (ci > lo) { tax += (Math.min(ci, hi) - lo) * r; marg = BANDS[i][1]; }
+      lo = hi;
+    }
+    return { tax: tax, marginal: ci > 0 ? marg : 0 };
+  }
+  function sgCalc() {
+    var S = parseNum(sg.salary) || 0, M = parseNum(sg.months) || 12, B = parseNum(sg.bonus) || 0, other = parseNum(sg.other) || 0;
+    var owSub = Math.min(S, CPF.owCap) * M, awSub = Math.max(0, Math.min(B, CPF.annual - owSub));
+    var empCPF = CPF.emp * (owSub + awSub), erCPF = CPF.er * (owSub + awSub);
+    var gross = S * M + B;
+    var reliefs = Math.min(80000, 1000 + empCPF + other), ci = Math.max(0, gross - reliefs);
+    var t = sgTax(ci), reb = Math.min(t.tax * (parseNum(sg.rebate) || 0) / 100, parseNum(sg.rebateCap) || 0), tax = Math.max(0, t.tax - reb);
+    return { S: S, M: M, B: B, owSub: owSub, awSub: awSub, empCPF: empCPF, erCPF: erCPF, gross: gross, reliefs: reliefs, ci: ci,
+             taxBefore: t.tax, rebate: reb, tax: tax, marginal: t.marginal, net: gross - empCPF - tax,
+             monthlyCPF: CPF.emp * Math.min(S, CPF.owCap) };
+  }
+  function sgHTML() {
+    var r = sgCalc(), $$ = function (v) { return '$' + fmt(v, 0); };
+    var row = function (k, v, b) { return '<tr><td>' + (b ? '<b>' + k + '</b>' : k) + '</td><td>' + (b ? '<b>' + v + '</b>' : v) + '</td></tr>'; };
+    return '<div class="f"><div class="two"><label>Monthly salary<input id="sg-salary" inputmode="decimal" value="' + esc(sg.salary) + '"></label>' +
+      '<label>Months paid<input id="sg-months" inputmode="decimal" value="' + esc(sg.months) + '"></label></div>' +
+      '<div class="two"><label>Bonus for the year<input id="sg-bonus" inputmode="decimal" value="' + esc(sg.bonus) + '"></label>' +
+      '<label>Other reliefs (optional)<input id="sg-other" inputmode="decimal" value="' + esc(sg.other) + '"></label></div>' +
+      '<div class="two"><label>Tax rebate % (if announced)<input id="sg-rebate" inputmode="decimal" value="' + esc(sg.rebate) + '"></label>' +
+      '<label>Rebate cap $<input id="sg-rebateCap" inputmode="decimal" value="' + esc(sg.rebateCap) + '"></label></div></div>' +
+      '<h3 class="th">CPF</h3><table class="mt">' +
+      row('Your CPF each month', $$(r.monthlyCPF)) +
+      row('Take-home each month (before tax)', $$(r.S - r.monthlyCPF)) +
+      row('Your CPF for the year', $$(r.empCPF), true) +
+      row('Employer CPF for the year', $$(r.erCPF)) +
+      row('Bonus subject to CPF', $$(r.awSub) + (r.awSub < r.B ? ' <span class="pl">(of ' + $$(r.B) + ')</span>' : '')) + '</table>' +
+      '<h3 class="th">INCOME TAX</h3><table class="mt">' +
+      row('Employment income', $$(r.gross)) +
+      row('Reliefs (earned income $1,000 + your CPF' + (parseNum(sg.other) ? ' + other' : '') + ')', '−' + $$(r.reliefs)) +
+      row('Chargeable income', $$(r.ci)) +
+      (r.rebate ? row('Tax before rebate', $$(r.taxBefore)) + row('Rebate', '−' + $$(r.rebate)) : '') +
+      row('Estimated tax', $$(r.tax), true) +
+      row('Effective rate (on income)', fmt(r.gross ? r.tax / r.gross * 100 : 0, 2) + '%') +
+      row('Top (marginal) rate', fmt(r.marginal, 1) + '%') + '</table>' +
+      '<h3 class="th">TAKE-HOME</h3><table class="mt">' +
+      row('After CPF and tax, for the year', $$(r.net), true) +
+      row('Average per month', $$(r.net / (r.M || 12))) + '</table>' +
+      '<p class="small">Estimate for a Singapore tax resident aged 55 or below (citizen or 3rd-year+ PR). CPF: 20% you, 17% employer, on salary up to $8,000 a month and total wages up to $102,000 a year (CPF Board, 2026). ' +
+      'Tax: IRAS resident rates from YA2024 onwards; income earned in 2026 is taxed in YA2027. Reliefs are capped at $80,000. No personal tax rebate has been announced for YA2026 or YA2027; enter one if it is. CPF rounding and other income are not included.</p>';
+  }
+
   // ---------- shell ----------
-  var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg'], ['pace', 'Pace']];
+  var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg'], ['sgtax', 'SG Tax'], ['pace', 'Pace']];
   function chipsHTML() {
     return TOOLS.map(function (t) { return '<button class="chip" type="button" data-tool="' + t[0] + '" aria-pressed="' + (tool === t[0]) + '">' + t[1] + '</button>'; }).join('');
   }
@@ -327,7 +384,7 @@ var Tools = (function () {
     if (!root) return;
     var focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : null;
     var pos = focused && document.activeElement.selectionStart;
-    root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : tool === 'pace' ? paceHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div></div>';
+    root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : tool === 'pace' ? paceHTML() : tool === 'sgtax' ? sgHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div></div>';
     var ch = document.getElementById('chist'); if (ch) ch.scrollTop = ch.scrollHeight;
     if (focused && document.getElementById(focused)) {   // keep typing position while results update
       var el = document.getElementById(focused); el.focus();
@@ -342,6 +399,7 @@ var Tools = (function () {
     if (id === 'fx-amt') fxAmt = v; else if (id === 'fx-from') fxFrom = v;
     else if (id.indexOf('tvm-') === 0) { var k = id.slice(4); if (k === 'BG') tvm.BEGIN = v === '1'; else tvm[k] = v; return; }   // TVM recalculates on Solve only
     else if (id.indexOf('rt-') === 0) rt[id.slice(3)] = v;
+    else if (id.indexOf('sg-') === 0) sg[id.slice(3)] = v;
     else if (id === 'pc2-unit') return setUnit(v);
     else if (id.indexOf('pc2-') === 0) { var pk = id.slice(4); pace[pk] = v; if (pk === 'pace' || pk === 'speed') pace.src = pk; return; }   // recalculated on Solve
     else if (id === 'pc-jpy') pc.jpy = v === '1';
@@ -381,6 +439,6 @@ var Tools = (function () {
     setTape: function (list) { tape = (list || []).filter(function (t) { return t && isFinite(t.r); }).slice(0, TAPE_MAX); ans = tape.length ? tape[0].r : 0; },
     select: function (t) { tool = t; draw(); },
     draw: draw,
-    _test: { groupStr: groupStr, groupExpr: groupExpr, liveFormat: liveFormat, rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
+    _test: { sg: sg, sgCalc: sgCalc, sgTax: sgTax, groupStr: groupStr, groupExpr: groupExpr, liveFormat: liveFormat, rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
   };
 })();
