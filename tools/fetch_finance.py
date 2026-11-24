@@ -21,6 +21,7 @@ def fetch(url):
         return []
 
 old = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else []
+if isinstance(old, dict): old = old.get("items", [])   # file is {"updated", "items"}
 by_key = {x["id"]: x for x in old}
 fresh = 0
 for url in URLS:
