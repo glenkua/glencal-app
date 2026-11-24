@@ -487,6 +487,12 @@
       noteMsg('Tidied. <button class="btn link" type="button" data-act="n-undo">Undo</button>');
     } catch (e) { noteMsg('AI couldn\'t tidy that (' + esc(e.message || e) + '). Your note is unchanged.'); }
   }
+  $('sheet').addEventListener('change', function (e) {
+    if (e.target.id !== 'impfile' || !e.target.files || !e.target.files[0]) return;
+    var r = new FileReader();
+    r.onload = function () { restoreText(String(r.result)); };
+    r.readAsText(e.target.files[0]);
+  });
   $('sheet').addEventListener('input', function (e) { if (noteEd && (e.target.id === 'n-title' || e.target.id === 'n-body')) noteChanged(); });
 
   // ---- note formatting: plain text with list markers, so it stays readable anywhere you share it ----
@@ -1471,11 +1477,13 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 709a3811440c</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 5b78de81e12e</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
     openSheet('<h2>Import entries</h2><p>Paste a GlenCal backup, or the data copied from the Scriptable version. Entries with the same id are replaced, others are added.</p>' +
+      '<label class="btn" style="text-align:center">Choose backup file<input id="impfile" type="file" accept=".json,application/json,text/plain" hidden></label>' +
+      '<p class="small">or paste the text:</p>' +
       '<textarea id="imp" placeholder="[ { &quot;date&quot;: ... } ]"></textarea>' + (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
       '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button><button class="btn" type="button" data-act="paste-import">Paste from clipboard</button><button class="btn primary" type="button" data-act="do-import">Import</button></div>');
   }
@@ -1489,6 +1497,7 @@
         shift: SHIFT_NAMES[r.shift] ? r.shift : 'earlier', note: r.note || '' };
     });
     try { var dn = JSON.parse(text != null ? text : $('imp').value); if (dn && Array.isArray(dn.notes)) { var nid = {}; dn.notes.forEach(function (n) { if (n && n.id) nid[n.id] = 1; }); notes = notes.filter(function (n) { return !nid[n.id]; }).concat(dn.notes.filter(function (n) { return n && n.id; })); } } catch (e) {}
+    try { var dc = JSON.parse(text != null ? text : $('imp').value); if (dc && Array.isArray(dc.calc) && !calcTape.length) { calcTape = dc.calc.slice(0, 30); Tools.setTape(calcTape); } } catch (e) {}
     if (newRules.length) { var rid = {}; newRules.forEach(function (r) { rid[r.id] = 1; }); rules = rules.filter(function (r) { return !rid[r.id]; }).concat(newRules); }
     if (!Array.isArray(list) || (!list.length && !newRules.length)) return showImport('That isn\'t a GlenCal backup. Paste the whole text, starting with [ or {.');
     var clean = list.filter(function (x) { return x && x.title && GC.fromISOok(x.date); }).map(function (x) {
@@ -1498,6 +1507,59 @@
     items = items.filter(function (i) { return !byId[i.id]; }).concat(clean);
     persist(); refresh();
     openSheet('<h2>Imported</h2><p>' + clean.length + ' entries' + (newRules.length ? ' and ' + newRules.length + ' recurring items' : '') + ' imported.</p><div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
+  }
+  // Backup: AES-GCM with a key from your password (PBKDF2, 600,000 rounds). Without the password the file can't be read.
+  function bkKey(pass, salt) {
+    return crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']).then(function (base) {
+      return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: salt, iterations: 600000 }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    });
+  }
+  function b64(u8) { var s2 = ''; for (var i = 0; i < u8.length; i += 0x8000) s2 += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s2); }
+  function unb64(t) { return Uint8Array.from(atob(t), function (c) { return c.charCodeAt(0); }); }
+  function backupJSON() { return JSON.stringify({ v: 2, made: new Date().toISOString(), items: items, rules: rules, paid: paid, notes: notes, calc: calcTape }); }
+  async function makeBackup(pass) {
+    var plain = backupJSON();
+    if (!pass) return plain;
+    var salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+    var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, await bkKey(pass, salt), new TextEncoder().encode(plain)));
+    return JSON.stringify({ glencalBackup: 1, enc: 'AES-GCM, PBKDF2-SHA256 600000', made: new Date().toISOString(), salt: b64(salt), iv: b64(iv), data: b64(ct) });
+  }
+  async function openBackup(text, pass) {
+    var o = JSON.parse(text);
+    if (!o || !o.glencalBackup) return text;
+    var pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(o.iv) }, await bkKey(pass, unb64(o.salt)), unb64(o.data));
+    return new TextDecoder().decode(pt);
+  }
+  function showExport(msg) {
+    openSheet('<h2>Export backup</h2><p>Choose a password for the backup file. You\'ll need it to restore. It can\'t be recovered if you forget it.</p>' +
+      (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
+      '<div class="f"><input class="pw" id="bk-p1" type="password" autocomplete="new-password" placeholder="backup password (8+ characters)">' +
+      '<input class="pw" id="bk-p2" type="password" autocomplete="new-password" placeholder="type it again"></div>' +
+      '<div class="actions"><button class="btn link grow" type="button" data-act="bk-plain">Export without a password (readable)</button>' +
+      '<button class="btn" type="button" data-act="close">Cancel</button><button class="btn primary" type="button" data-act="bk-enc">Export</button></div>');
+  }
+  async function exportBackup(pass) {
+    var text = await makeBackup(pass), name = 'glencal-backup-' + todayISO + (pass ? '' : '-readable') + '.json', file = null;
+    try { file = new File([text], name, { type: 'application/json' }); } catch (e) {}
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      closeSheet();
+      navigator.share({ files: [file] }).catch(function () {});
+    } else {
+      openSheet('<h2>Export backup</h2><p>Copy this text and save it somewhere safe.</p><textarea readonly>' + esc(text) + '</textarea>' +
+        '<div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
+    }
+  }
+  var pendingBackup = null;
+  function askBackupPassword(msg) {
+    openSheet('<h2>Restore backup</h2><p>This backup is password-protected. Enter the password you chose when you exported it.</p>' +
+      (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
+      '<input class="pw" id="bk-in" type="password" autocomplete="current-password" placeholder="backup password">' +
+      '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button><button class="btn primary" type="button" data-act="bk-open">Restore</button></div>');
+  }
+  function restoreText(text) {
+    var o = null; try { o = JSON.parse(text); } catch (e) {}
+    if (o && o.glencalBackup) { pendingBackup = text; askBackupPassword(); return; }
+    doImport(text);
   }
   function doExport() {
     var json = JSON.stringify({ v: 2, items: items, rules: rules, paid: paid, notes: notes }, null, 1);
@@ -1624,7 +1686,10 @@
       if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(function (t) { doImport(t); }, function () { showImport('Couldn\'t read the clipboard. Paste into the box instead.'); });
       else showImport('Paste into the box instead.');
     }
-    else if (act === 'export') doExport();
+    else if (act === 'export') showExport();
+    else if (act === 'bk-plain') exportBackup('');
+    else if (act === 'bk-enc') { var p1 = $('bk-p1').value, p2 = $('bk-p2').value; if (p1.length < 8) showExport('Use at least 8 characters.'); else if (p1 !== p2) showExport('The two passwords don\'t match.'); else exportBackup(p1); }
+    else if (act === 'bk-open') { var pw = $('bk-in').value; openBackup(pendingBackup, pw).then(function (t) { pendingBackup = null; doImport(t); }, function () { askBackupPassword('Wrong password, or the file is damaged.'); }); }
     else if (act === 'lock') lockNow();
     else if (act === 'lock-off') { prefs('lock', 'off'); Vault.rekey('device').then(showMenu, function (e) { notice('Could not turn off the lock: ' + e.message); }); }
     else if (act === 'lock-on') { closeSheet(); prefs('lock', 'on'); showLockOn(); }

@@ -83,12 +83,12 @@ Also give a short title (2 to 6 words) describing the note.` },
 // history: [{q, a}] of recent turns.
 export async function ask(question, today, contextLines, history) {
   const msgs = [{ role: 'system', content:
-`You are the assistant inside GlenCal, Glen's private calendar. Today is ${today}.
+`You are the assistant inside GlenCal, the user's private calendar. Today is ${today}.
 Relevant calendar entries, one per line (id | date weekday time | title @ place | note):
 ${contextLines || '(none found)'}
 
 Answer only from these entries; if something isn't listed, say you can't find it. Never invent entries.
-If Glen asks to add, move, change or delete something, fill "add", "update" or "delete". Glen approves every change on screen, so say what you proposed. For "update", give the entry id and only the fields that change (empty string = keep). For "delete", give ids.
+If the user asks to add, move, change or delete something, fill "add", "update" or "delete". The user approves every change on screen, so say what you proposed. For "update", give the entry id and only the fields that change (empty string = keep). For "delete", give ids.
 ${RULES}
 "reply": brief, plain English. When listing entries use short lines like "28 Nov Sat 11am – Haircut".` }];
   (history || []).slice(-2).forEach(h => { msgs.push({ role: 'user', content: h.q }); msgs.push({ role: 'assistant', content: JSON.stringify({ reply: h.a, add: [], update: [], delete: [] }) }); });
