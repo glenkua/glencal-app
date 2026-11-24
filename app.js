@@ -385,8 +385,8 @@
         NEWS.items.filter(function (x) { return x.t >= since && !seen[x.url] && pred(x); }).slice(0, n).forEach(function (x) { seen[x.url] = 1; picks.push(x); });
       };
       // US first; other regions only when it's front-page, market-moving news
-      var US = /(u\.s\.|us|usa|america|fed|fomc|powell|treasur(y|ies)|wall street|white house|congress|nonfarm|payrolls?|dollar)/i;
-      var BIG = /(crash(es|ed)?|plunge[sd]?|tumble[sd]?|rout|sell-?off|turmoil|panic|crisis|contagion|default(s|ed)?|bailout|collapse[sd]?|bank run|insolven|emergency|surprise (rate )?(cut|hike)|intervene[sd]?|intervention|war|invasion|attack|sanctions?|downgrade[sd]?|halt(s|ed)?|record (low|high)|resign(s|ed|ation)?)/i;
+      var US = /\b(u\.s\.|us|usa|america|fed|fomc|powell|treasur(y|ies)|wall street|white house|congress|nonfarm|payrolls?|dollar)\b/i;
+      var BIG = /\b(crash(es|ed)?|plunge[sd]?|tumble[sd]?|rout|sell-?off|turmoil|panic|crisis|contagion|default(s|ed)?|bailout|collapse[sd]?|bank run|insolven|emergency|surprise (rate )?(cut|hike)|intervene[sd]?|intervention|war|invasion|attack|sanctions?|downgrade[sd]?|halt(s|ed)?|record (low|high)|resign(s|ed|ation)?)\b/i;
       var isUS = function (x) { return (x.ccy || []).indexOf('USD') >= 0 || US.test(x.title); };
       take(function (x) { return x.cb && x.src === 'FED'; }, 2);
       take(function (x) { return !x.sg && !x.cb && x.kind === 'macro' && isUS(x); }, 5);
@@ -1289,7 +1289,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version fe6a2aa7e9bb</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 5b2f472a8c97</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
