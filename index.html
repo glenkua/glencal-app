@@ -106,8 +106,8 @@ input, textarea, select { font-family: var(--mono); }
 /* feed */
 main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right: max(0.6rem, env(safe-area-inset-right, 0px)); padding-bottom: 2rem; }
 /* bottom section bar */
-.tabs { position: relative; flex: none; z-index: 7; display: grid; grid-template-columns: repeat(5, 1fr); background: var(--panel); border-top: 1px solid var(--line); padding: 0 max(0.6rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(0.6rem, env(safe-area-inset-left, 0px)); }
-.tabs button { all: unset; text-align: center; padding: 0.75rem 0; font-weight: 800; font-size: 0.74rem; letter-spacing: 0.08em; color: var(--muted); cursor: pointer; border-top: 2px solid transparent; }
+.tabs { position: relative; flex: none; z-index: 7; display: grid; grid-template-columns: repeat(6, 1fr); background: var(--panel); border-top: 1px solid var(--line); padding: 0 max(0.6rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(0.6rem, env(safe-area-inset-left, 0px)); }
+.tabs button { all: unset; text-align: center; padding: 0.75rem 0; font-weight: 800; font-size: 0.66rem; letter-spacing: 0.04em; color: var(--muted); cursor: pointer; border-top: 2px solid transparent; }
 .tabs button[aria-pressed="true"] { color: var(--amber); border-top-color: var(--amber); }
 /* news */
 .nmeta { color: var(--muted); font-size: 0.8rem; padding: 0.45rem 0; }
@@ -135,6 +135,13 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .bq { display: flex; justify-content: space-between; gap: 0.4rem; padding: 0.3rem 0; border-bottom: 1px solid var(--line); font-size: 0.92rem; min-width: 0; }
 .bq b { font-weight: 700; color: var(--muted); white-space: nowrap; }
 .bq .v { white-space: nowrap; }
+/* notes */
+.nnote { all: unset; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.6rem; width: 100%; padding: 0.5rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.nnote .nt1 { font-weight: 700; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nnote .nd { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+.nnote .np { grid-column: 1 / -1; color: var(--muted); font-size: 0.88rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; }
+.ned input { font-size: 18px !important; font-weight: 700; }
+.ned textarea { min-height: 46vh; line-height: 1.45; }
 .bfoot { color: var(--muted); font-size: 0.75rem; padding: 1rem 0 0.5rem; }
 /* tools */
 .toolsbox { padding-top: 0.6rem; display: flex; flex-direction: column; gap: 0.7rem; }
@@ -299,11 +306,12 @@ textarea { min-height: 9rem; resize: vertical; }
   <div id="scroll" class="scroll"><div id="pw"><div id="pull" class="pull"></div>
   <main id="brief"></main>
   <main id="list" hidden></main>
+  <main id="notes" hidden></main>
   <main id="news" hidden></main>
   <main id="fan" hidden></main>
   <main id="tools" hidden></main>
   </div></div>
-  <nav class="tabs" aria-label="Sections"><button id="tab-brief" type="button" data-tab="brief" aria-pressed="true">BRIEF</button><button id="tab-cal" type="button" data-tab="cal" aria-pressed="false">CALENDAR</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button><button id="tab-tools" type="button" data-tab="tools" aria-pressed="false">TOOLS</button></nav>
+  <nav class="tabs" aria-label="Sections"><button id="tab-brief" type="button" data-tab="brief" aria-pressed="true">BRIEF</button><button id="tab-cal" type="button" data-tab="cal" aria-pressed="false">CALENDAR</button><button id="tab-notes" type="button" data-tab="notes" aria-pressed="false">NOTES</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button><button id="tab-tools" type="button" data-tab="tools" aria-pressed="false">TOOLS</button></nav>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button id="undo" class="key go" type="button">UNDO</button></div>
   <div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true"></div></div>
 </div>

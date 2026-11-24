@@ -31,9 +31,9 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
-  var rules = [], paid = {}, calcTape = [];
+  var rules = [], paid = {}, calcTape = [], notes = [];
   function persist() {
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30) };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }) };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -149,6 +149,7 @@
     rules = data.rules || [];
     paid = data.paid || {};
     calcTape = data.calc || [];
+    notes = data.notes || [];
     Tools.setTape(calcTape);
     unlocked = true;
     todayISO = GC.iso(new Date());
@@ -166,7 +167,7 @@
     closeSheet();
     $('list').innerHTML = '';
     askHistory = []; pending = null;
-    calcTape = []; Tools.setTape([]);
+    calcTape = []; Tools.setTape([]); notes = [];
     showUnlock();
   }
 
@@ -413,25 +414,94 @@
     else showEdit(id);
   });
 
+  // =====================================================================
+  // Notes
+  // =====================================================================
+  function noteTitle(n) { return n.title || (n.body || '').split('\n')[0].replace(/^[•\-\s]+/, '').slice(0, 80) || 'Untitled'; }
+  function noteWhen(iso) {
+    var d = new Date(iso); if (isNaN(d)) return '';
+    if (GC.iso(d) === todayISO) return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    var l = dLabel(GC.iso(d)); return l.day + ' ' + l.mon + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+  }
+  function renderNotes() {
+    var q = $('q').value.trim().toLowerCase();
+    var list = notes.filter(function (n) { return (n.title || n.body) && (!q || (n.title + ' ' + n.body).toLowerCase().indexOf(q) >= 0); })
+      .sort(function (a, b) { return a.updated < b.updated ? 1 : -1; });
+    var row = function (n) {
+      var body = n.title ? n.body : (n.body || '').split('\n').slice(1).join('\n');
+      return '<button type="button" class="nnote" data-note="' + esc(n.id) + '"><span class="nt1">' + esc(noteTitle(n)) + '</span><span class="nd">' + esc(noteWhen(n.updated)) + '</span>' +
+        '<span class="np">' + esc((body || '').trim().slice(0, 240)) + '</span></button>';
+    };
+    var pinned = list.filter(function (n) { return n.pinned; }), rest = list.filter(function (n) { return !n.pinned; });
+    $('notes').innerHTML = (pinned.length ? '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + pinned.length + '</span></h2>' + pinned.map(row).join('') : '') +
+      '<h2 class="mbar"><span>NOTES</span><span class="n">' + rest.length + '</span></h2>' +
+      (rest.length ? rest.map(row).join('') : '<p class="empty">' + (q ? 'NO MATCHES' : pinned.length ? 'No other notes.' : 'No notes yet. Tap + ADD to write one.') + '</p>');
+  }
+  var noteEd = null, noteTimer = null, noteDelArmed = false;
+  function openNote(id) {
+    var now = new Date().toISOString();
+    noteEd = notes.filter(function (n) { return n.id === id; })[0] || { id: 'n' + uid(), title: '', body: '', pinned: false, created: now, updated: now };
+    noteDelArmed = false;
+    openSheet('<div class="ned f"><input id="n-title" placeholder="Title (optional)" value="' + esc(noteEd.title) + '">' +
+      '<textarea id="n-body" placeholder="Write anything: call notes, levels to watch, ideas…">' + esc(noteEd.body) + '</textarea></div>' +
+      '<div id="n-msg" class="small" hidden></div>' +
+      '<div class="actions"><button class="btn" type="button" data-act="n-pin">' + (noteEd.pinned ? 'Unpin' : '📌 Pin') + '</button>' +
+      '<button class="btn" type="button" data-act="n-ai">AI tidy</button>' +
+      '<button class="btn" type="button" data-act="n-events">Make events</button>' +
+      '<button class="btn danger" type="button" data-act="n-del">Delete</button>' +
+      '<button class="btn primary" type="button" data-act="n-done">Done</button></div>');
+    if (!id) setTimeout(function () { $('n-body').focus(); }, 60);
+  }
+  function noteChanged() {
+    if (!noteEd) return;
+    noteEd.title = $('n-title').value; noteEd.body = $('n-body').value; noteEd.updated = new Date().toISOString();
+    if ((noteEd.title || noteEd.body) && notes.indexOf(noteEd) < 0) notes.push(noteEd);
+    clearTimeout(noteTimer); noteTimer = setTimeout(persist, 600);
+  }
+  function noteMsg(html) { var m = $('n-msg'); if (m) { m.innerHTML = html; m.hidden = !html; } }
+  async function noteTidy() {
+    var text = $('n-body').value.trim();
+    if (!text) return noteMsg('Write something first.');
+    var st = aiStatus();
+    if (st === 'unsupported') return noteMsg('AI needs WebGPU, which this browser doesn\'t offer.');
+    if (st === 'none') return noteMsg('Set up the on-device AI first: ··· → AI on this iPhone.');
+    noteMsg('Tidying on this iPhone…');
+    try {
+      var m = await ensureAI(function (p, t) { noteMsg('Loading AI… ' + Math.round(p * 100) + '%'); });
+      var out = await m.tidy(text);
+      if (!out || !out.bullets || !out.bullets.length) return noteMsg('AI couldn\'t tidy that. Your note is unchanged.');
+      noteEd.prevBody = noteEd.body; noteEd.prevTitle = noteEd.title;
+      $('n-body').value = out.bullets.map(function (b) { return '• ' + b.replace(/^[•\-\s]+/, ''); }).join('\n');
+      if (!$('n-title').value.trim() && out.title) $('n-title').value = out.title;
+      noteChanged();
+      noteMsg('Tidied. <button class="btn link" type="button" data-act="n-undo">Undo</button>');
+    } catch (e) { noteMsg('AI couldn\'t tidy that (' + esc(e.message || e) + '). Your note is unchanged.'); }
+  }
+  $('sheet').addEventListener('input', function (e) { if (noteEd && (e.target.id === 'n-title' || e.target.id === 'n-body')) noteChanged(); });
+
   function setTab(t) {
     if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
     if (tab === 'fan' && t !== 'fan' && FAN) { fanSeen = FAN.items.length ? FAN.items[0].t : fanSeen; prefs('fanSeen', fanSeen); }
     tab = t;
-    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief';
+    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief', nt = t === 'notes';
+    $('tab-notes').setAttribute('aria-pressed', nt); $('notes').hidden = !nt;
     $('tab-brief').setAttribute('aria-pressed', br); $('brief').hidden = !br;
     $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
-    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br; $('cmdrow').hidden = tl || br;
-    $('ask').hidden = !(cal || br); $('jump').hidden = !cal; $('add').hidden = !(cal || br);
+    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt; $('cmdrow').hidden = tl || br;
+    $('ask').hidden = !(cal || br); $('jump').hidden = !cal; $('add').hidden = !(cal || br || nt);
     $('q').value = '';
     if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
     else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); SC().scrollTop = 0; }
     else if (tl) { $('tchips').innerHTML = Tools.chips(); Tools.draw(); SC().scrollTop = 0; }
     else if (br) { renderBrief(); loadNews(); SC().scrollTop = 0; }
+    else if (nt) { renderNotes(); SC().scrollTop = 0; }
     else { showPast = false; render(); jumpToday(false); }
     syncHead();
   }
   $('tab-brief').addEventListener('click', function () { setTab('brief'); });
+  $('tab-notes').addEventListener('click', function () { setTab('notes'); });
+  $('notes').addEventListener('click', function (e) { var b = e.target.closest('[data-note]'); if (b) openNote(b.getAttribute('data-note')); });
   $('tab-cal').addEventListener('click', function () { setTab('cal'); });
   $('tab-news').addEventListener('click', function () { setTab('news'); });
   $('tab-fan').addEventListener('click', function () { setTab('fan'); });
@@ -776,7 +846,7 @@
     if (pull.y0 === null) return;
     var dy = e.touches[0].clientY - pull.y0;
     if (dy <= 0 || SC().scrollTop > 0) { if (pull.on) setPull(0); pull.on = false; return; }
-    if ((tab === 'cal' && showPast) || tab === 'tools') return;
+    if ((tab === 'cal' && showPast) || tab === 'tools' || tab === 'notes') return;
     pull.on = true; e.preventDefault();
     pull.d = Math.min(130, dy * 0.45); setPull(pull.d);
   }, { passive: false });
@@ -1289,7 +1359,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 472acfc42e4a</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version bdaa6599b965</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1306,6 +1376,7 @@
         dueWhen: r.dueWhen === 'same' || r.dueWhen === 'next' ? r.dueWhen : 'none', dueDay: r.dueDay === 'last' ? 'last' : +(r.dueDay || 1),
         shift: SHIFT_NAMES[r.shift] ? r.shift : 'earlier', note: r.note || '' };
     });
+    try { var dn = JSON.parse(text != null ? text : $('imp').value); if (dn && Array.isArray(dn.notes)) { var nid = {}; dn.notes.forEach(function (n) { if (n && n.id) nid[n.id] = 1; }); notes = notes.filter(function (n) { return !nid[n.id]; }).concat(dn.notes.filter(function (n) { return n && n.id; })); } } catch (e) {}
     if (newRules.length) { var rid = {}; newRules.forEach(function (r) { rid[r.id] = 1; }); rules = rules.filter(function (r) { return !rid[r.id]; }).concat(newRules); }
     if (!Array.isArray(list) || (!list.length && !newRules.length)) return showImport('That isn\'t a GlenCal backup. Paste the whole text, starting with [ or {.');
     var clean = list.filter(function (x) { return x && x.title && GC.fromISOok(x.date); }).map(function (x) {
@@ -1317,7 +1388,7 @@
     openSheet('<h2>Imported</h2><p>' + clean.length + ' entries' + (newRules.length ? ' and ' + newRules.length + ' recurring items' : '') + ' imported.</p><div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
   }
   function doExport() {
-    var json = JSON.stringify({ v: 2, items: items, rules: rules, paid: paid }, null, 1);
+    var json = JSON.stringify({ v: 2, items: items, rules: rules, paid: paid, notes: notes }, null, 1);
     var file = null;
     try { file = new File([json], 'glencal-backup-' + todayISO + '.json', { type: 'application/json' }); } catch (e) {}
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1348,7 +1419,7 @@
   // =====================================================================
   // Events
   // =====================================================================
-  $('q').addEventListener('input', function () { if (tab === 'news') { renderNews(); return; } if (tab === 'fan') { renderFantasy(); return; } render(); if (!$('q').value) jumpToday(false); });
+  $('q').addEventListener('input', function () { if (tab === 'notes') { renderNotes(); return; } if (tab === 'news') { renderNews(); return; } if (tab === 'fan') { renderFantasy(); return; } render(); if (!$('q').value) jumpToday(false); });
   $('jump').addEventListener('click', function () { $('q').value = ''; render(); jumpToday(true); });
   var holdTimer = null, held = false, hold0 = null;
   $('chips').addEventListener('pointerdown', function (e) {
@@ -1376,7 +1447,7 @@
     else { if (hiddenCats[cat]) delete hiddenCats[cat]; else hiddenCats[cat] = 1; }   // switch one category off/on
     saveHidden(); refresh(); jumpToday(false);
   });
-  $('add').addEventListener('click', function () { showPaste(''); });
+  $('add').addEventListener('click', function () { if (tab === 'notes') openNote(null); else showPaste(''); });
   $('ask').addEventListener('click', showAsk);
   $('more').addEventListener('click', showMenu);
   $('list').addEventListener('click', function (e) {
@@ -1394,7 +1465,7 @@
     if (id.indexOf('bill-') === 0) { showBill(id); return; }
     showEdit(id);
   });
-  $('scrim').addEventListener('click', function (e) { if (e.target === $('scrim') && !askBusy) closeSheet(); });
+  $('scrim').addEventListener('click', function (e) { if (e.target === $('scrim') && !askBusy) { if (noteEd) { noteChanged(); noteEd = null; persist(); } closeSheet(); if (tab === 'notes') renderNotes(); } });
   $('sheet').addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
     var act = b.getAttribute('data-act');
@@ -1415,6 +1486,15 @@
     else if (act === 'ask-discard') { pending = null; askHistory.push({ q: '(discard)', a: 'Discarded.' }); showAsk(); }
     else if (act === 'import') showImport();
     else if (act === 'rules') showRules();
+    else if (act === 'n-done') { noteChanged(); noteEd = null; persist(); closeSheet(); if (tab === 'notes') renderNotes(); }
+    else if (act === 'n-pin') { noteEd.pinned = !noteEd.pinned; b.textContent = noteEd.pinned ? 'Unpin' : '📌 Pin'; noteChanged(); }
+    else if (act === 'n-ai') noteTidy();
+    else if (act === 'n-undo') { if (noteEd && noteEd.prevBody != null) { $('n-body').value = noteEd.prevBody; $('n-title').value = noteEd.prevTitle || ''; noteChanged(); noteMsg('Restored the original.'); } }
+    else if (act === 'n-events') { noteChanged(); var txt = $('n-body').value; noteEd = null; persist(); closeSheet(); showPaste(txt); }
+    else if (act === 'n-del') {
+      if (!noteDelArmed) { noteDelArmed = true; b.textContent = 'Tap again to delete'; }
+      else { var did = noteEd.id; notes = notes.filter(function (n) { return n.id !== did; }); noteEd = null; persist(); closeSheet(); if (tab === 'notes') renderNotes(); }
+    }
     else if (act === 'notify') showNotify();
     else if (act === 'notify-on') turnOnNotify();
     else if (act === 'notify-copy') { var t = $('subjson').value; navigator.clipboard.writeText(t).then(function () { b.textContent = 'Copied'; }, function () { $('subjson').select(); }); }

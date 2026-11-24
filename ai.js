@@ -68,6 +68,17 @@ export async function extract(text, today) {
   return out.entries || [];
 }
 
+// Tidies rough notes into a short title and clean bullet points, keeping every fact.
+export async function tidy(text) {
+  return json([
+    { role: 'system', content: `You tidy one person's rough notes (call notes, market levels, ideas) into clean bullet points.
+Keep every fact, name, number, level, date and currency pair exactly as written. Fix spelling and grammar. One idea per bullet, short and clear.
+Never add facts, opinions or advice that are not in the text. If something is unclear, keep the original words.
+Also give a short title (2 to 6 words) describing the note.` },
+    { role: 'user', content: text }
+  ], { type: 'object', properties: { title: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } } }, required: ['title', 'bullets'] }, 900);
+}
+
 // Answers a question or proposes changes, using only the entries it is given.
 // history: [{q, a}] of recent turns.
 export async function ask(question, today, contextLines, history) {
