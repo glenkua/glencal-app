@@ -15,11 +15,14 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 tools/fetch_markets.py
       - run: python3 tools/fetch_news.py
+      - name: Restore previous fantasy feed (alerts accumulate)
+        run: git fetch -q --depth=1 origin markets && git show FETCH_HEAD:fantasy.json > fantasy.json || rm -f fantasy.json
+      - run: python3 tools/fetch_fantasy.py
       - name: Publish to the markets branch (one commit, replaced each run)
         run: |
-          mkdir out && cp markets.json news.json out/ && cd out
+          mkdir out && cp markets.json news.json fantasy.json out/ && cd out
           git init -q -b markets
           git config user.name "github-actions[bot]"
           git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
-          git add markets.json news.json && git commit -qm "Market quotes and headlines"
+          git add markets.json news.json fantasy.json && git commit -qm "Market quotes and headlines"
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" markets

@@ -99,7 +99,7 @@ input, textarea, select { font-family: var(--mono); }
 /* feed */
 main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right: max(0.6rem, env(safe-area-inset-right, 0px)); padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)); }
 /* bottom section bar */
-.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; display: grid; grid-template-columns: 1fr 1fr; background: var(--panel); border-top: 1px solid var(--line); padding: 0 max(0.6rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(0.6rem, env(safe-area-inset-left, 0px)); }
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; display: grid; grid-template-columns: 1fr 1fr 1fr; background: var(--panel); border-top: 1px solid var(--line); padding: 0 max(0.6rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(0.6rem, env(safe-area-inset-left, 0px)); }
 .tabs button { all: unset; text-align: center; padding: 0.75rem 0; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.14em; color: var(--muted); cursor: pointer; border-top: 2px solid transparent; }
 .tabs button[aria-pressed="true"] { color: var(--amber); border-top-color: var(--amber); }
 /* news */
@@ -113,6 +113,16 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .nrow.cb { box-shadow: inset 2px 0 0 var(--amber); padding-left: 0.3rem; }
 .nrow.new .nt::after { content: " ●"; color: var(--amber); font-size: 0.6rem; vertical-align: 0.15rem; }
 .nrow:visited .nh { color: var(--muted); }
+/* fantasy */
+.sp { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; }
+.sp.NBA { color: #f28c38; } .sp.NFL { color: #6fa8ff; }
+.st { display: inline-block; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.05em; padding: 0 0.25rem; border-radius: 2px; margin-right: 0.35rem; vertical-align: 0.08rem; border: 1px solid; }
+.st.out { color: var(--red); } .st.doubt { color: var(--amber); } .st.in { color: var(--up); }
+.fblurb { display: block; color: var(--muted); font-size: 0.85rem; margin-top: 0.1rem; }
+.nrow.alert .nh { font-weight: 700; }
+.trend h3 { margin: 0.8rem 0 0.3rem; font-size: 0.8rem; letter-spacing: 0.12em; color: var(--amber); }
+.trend .tr { display: grid; grid-template-columns: 1.6em minmax(0, 1fr) auto; gap: 0.4rem; padding: 0.3rem 0; border-bottom: 1px solid var(--line); }
+.trend .tr .k { color: var(--muted); } .trend .tr .a { color: var(--up); }
 .mbar { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--headH)); z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin: 0.6rem 0 0; min-height: var(--mbarH); padding: 0 0.55rem; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.14em; color: var(--amber); background: var(--raise); border-left: 2px solid var(--amber); border-bottom: 1px solid var(--line); cursor: pointer; box-shadow: 0 -0.6rem 0 var(--bg); }
 .mbar .n { font-weight: 600; letter-spacing: 0.04em; font-size: 0.75rem; color: var(--muted); }
 .mbar .n::after { content: "  JUMP ▾"; }
@@ -233,11 +243,13 @@ textarea { min-height: 9rem; resize: vertical; }
     <label class="cmd"><input id="q" class="search" type="search" placeholder="search" autocomplete="off" aria-label="Search"></label>
     <div id="chips" class="chips" aria-label="Categories"></div>
     <div id="nchips" class="chips" aria-label="News filters" hidden></div>
+    <div id="fchips" class="chips" aria-label="Fantasy filters" hidden></div>
     <div id="notice" class="notice" hidden></div>
   </div></header>
   <main id="list"></main>
   <main id="news" hidden></main>
-  <nav class="tabs" aria-label="Sections"><button id="tab-cal" type="button" data-tab="cal" aria-pressed="true">CALENDAR</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button></nav>
+  <main id="fan" hidden></main>
+  <nav class="tabs" aria-label="Sections"><button id="tab-cal" type="button" data-tab="cal" aria-pressed="true">CALENDAR</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button></nav>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button id="undo" class="key go" type="button">UNDO</button></div>
   <div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true"></div></div>
 </div>

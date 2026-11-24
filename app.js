@@ -275,7 +275,7 @@
   setInterval(renderClocks, 15000);
   loadFinance();
   setInterval(loadFinance, 30 * 60000);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); loadMarkets(); if (tab === 'news') loadNews(); } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { renderClocks(); loadFinance(); loadMarkets(); if (tab === 'news') loadNews(); if (tab === 'fan') loadFantasy(); } });
 
   // =====================================================================
   // News: headlines collected by a GitHub job every ~10 min (same branch as the ticker)
@@ -321,24 +321,81 @@
   }
   function setTab(t) {
     if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
+    if (tab === 'fan' && t !== 'fan' && FAN) { fanSeen = FAN.items.length ? FAN.items[0].t : fanSeen; prefs('fanSeen', fanSeen); }
     tab = t;
-    var news = t === 'news';
-    $('tab-cal').setAttribute('aria-pressed', !news); $('tab-news').setAttribute('aria-pressed', news);
-    $('list').hidden = news; $('news').hidden = !news;
-    $('chips').hidden = news; $('nchips').hidden = !news; $('openx').hidden = !news;
-    $('ask').hidden = news; $('jump').hidden = news; $('add').hidden = news;
+    var cal = t === 'cal', news = t === 'news', fan = t === 'fan';
+    $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan);
+    $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan;
+    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('openx').hidden = cal;
+    $('ask').hidden = !cal; $('jump').hidden = !cal; $('add').hidden = !cal;
     $('q').value = '';
     if (news) { renderNewsChips(); renderNews(); loadNews(); window.scrollTo({ top: 0 }); }
+    else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); window.scrollTo({ top: 0 }); }
     else { render(); jumpToday(false); }
     syncHead();
   }
   $('tab-cal').addEventListener('click', function () { setTab('cal'); });
   $('tab-news').addEventListener('click', function () { setTab('news'); });
+  $('tab-fan').addEventListener('click', function () { setTab('fan'); });
   $('nchips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-n]'); if (!b) return;
     newsCcy = b.getAttribute('data-n'); renderNewsChips(); renderNews(); window.scrollTo({ top: 0 });
   });
-  setInterval(function () { if (tab === 'news') loadNews(); }, 2 * 60000);
+  setInterval(function () { if (tab === 'news') loadNews(); if (tab === 'fan') loadFantasy(); }, 2 * 60000);
+
+  // ---- Fantasy: RotoWire player alerts, Yahoo/ESPN/PFF headlines, Sleeper most-added ----
+  var FAN = null, fanFilter = 'all', fanSeen = prefs('fanSeen') || '';
+  var FAN_CHIPS = [['all', 'All'], ['alert', '🚨 Alerts'], ['NBA', '🏀 NBA'], ['NFL', '🏈 NFL'], ['trend', '📈 Most added']];
+  var ST_LABEL = { out: 'OUT', doubt: 'Q', in: 'IN' };
+  function loadFantasy() {
+    var u = mktURL(); if (!u || document.hidden) return;
+    fetch(u.replace('/markets.json', '/fantasy.json'), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.items) { FAN = d; if (tab === 'fan') renderFantasy(); } }).catch(function () {});
+  }
+  function renderFantasyChips() {
+    $('fchips').innerHTML = FAN_CHIPS.map(function (c) {
+      return '<button class="chip" type="button" data-f="' + c[0] + '" aria-pressed="' + (fanFilter === c[0]) + '">' + esc(c[1]) + '</button>';
+    }).join('');
+  }
+  function renderFantasy() {
+    if (!FAN) { $('fan').innerHTML = '<p class="empty">Loading…</p>'; return; }
+    var head = '<div class="nmeta">Updated ' + esc(FAN.updated.slice(11)) + ' Singapore · tap to open</div>';
+    if (fanFilter === 'trend') {
+      $('fan').innerHTML = head + '<div class="trend">' + ['NBA', 'NFL'].map(function (sp) {
+        var list = (FAN.trending || {})[sp] || [];
+        return '<h3>' + (sp === 'NBA' ? '🏀' : '🏈') + ' ' + sp + ' · MOST ADDED ON SLEEPER, LAST 24H</h3>' + (list.length ? list.map(function (p, n) {
+          return '<div class="tr"><span class="k">' + (n + 1) + '</span><span>' + esc(p.n) + ' <span class="pl">' + esc([p.pos, p.team].filter(Boolean).join(' · ')) + '</span></span>' +
+            '<span class="a">+' + Number(p.adds || 0).toLocaleString('en-US') + '</span></div>';
+        }).join('') : '<p class="small">No data.</p>');
+      }).join('') + '</div>';
+      return;
+    }
+    var q = $('q').value.trim().toLowerCase();
+    var list = FAN.items.filter(function (x) {
+      if (fanFilter === 'alert' && x.kind !== 'alert') return false;
+      if ((fanFilter === 'NBA' || fanFilter === 'NFL') && x.sport !== fanFilter) return false;
+      return !q || (x.title + ' ' + (x.blurb || '')).toLowerCase().indexOf(q) >= 0;
+    });
+    var html = head, lastDay = '';
+    list.forEach(function (x) {
+      var day = x.t.slice(0, 10);
+      if (day !== lastDay) {
+        var l = dLabel(day), rel = day === todayISO ? 'TODAY · ' : day === GC.iso(GC.addDays(new Date(), -1)) ? 'YESTERDAY · ' : '';
+        html += '<h2 class="mbar"><span>' + rel + l.dow + ' ' + l.day + ' ' + l.mon + '</span></h2>';
+        lastDay = day;
+      }
+      html += '<a class="nrow' + (x.kind === 'alert' ? ' alert' : '') + (fanSeen && x.t > fanSeen ? ' new' : '') + '" href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' +
+        '<span class="nt">' + esc(x.t.slice(11)) + '</span><span class="ns"><span class="sp ' + x.sport + '">' + x.sport + '</span><br>' + esc(x.src) + '</span>' +
+        '<span class="nh">' + (x.status ? '<span class="st ' + x.status + '">' + ST_LABEL[x.status] + '</span>' : '') + esc(x.title) +
+        (x.blurb ? '<span class="fblurb">' + esc(x.blurb) + '</span>' : '') + '</span></a>';
+    });
+    if (!list.length) html += '<p class="empty">NO MATCHES</p>';
+    $('fan').innerHTML = html;
+  }
+  $('fchips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-f]'); if (!b) return;
+    fanFilter = b.getAttribute('data-f'); renderFantasyChips(); renderFantasy(); window.scrollTo({ top: 0 });
+  });
 
   // =====================================================================
   // Feed
@@ -1076,7 +1133,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version bad9f57119a8</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 1b6abea047b6</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1135,7 +1192,7 @@
   // =====================================================================
   // Events
   // =====================================================================
-  $('q').addEventListener('input', function () { if (tab === 'news') { renderNews(); return; } render(); if (!$('q').value) jumpToday(false); });
+  $('q').addEventListener('input', function () { if (tab === 'news') { renderNews(); return; } if (tab === 'fan') { renderFantasy(); return; } render(); if (!$('q').value) jumpToday(false); });
   $('jump').addEventListener('click', function () { $('q').value = ''; render(); jumpToday(true); });
   var holdTimer = null, held = false, hold0 = null;
   $('chips').addEventListener('pointerdown', function (e) {
