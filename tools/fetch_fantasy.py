@@ -26,6 +26,18 @@ def get(url, timeout=20):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     return urllib.request.urlopen(req, timeout=timeout).read()
 
+US_TZ = {"PST": -8, "PDT": -7, "MST": -7, "MDT": -6, "CST": -6, "CDT": -5, "EST": -5, "EDT": -4}
+def parse_date(v):
+    # RotoWire writes 12-hour times ("Mon, 23 Nov 2026 11:21:00 PM PST"), which the standard RSS parser misreads.
+    m = re.match(r"\w+,\s*(\d{1,2}) (\w{3}) (\d{4}) (\d{1,2}):(\d{2}):(\d{2}) ?(AM|PM) ([A-Z]{3})", v.strip())
+    if m and m.group(8) in US_TZ:
+        h = int(m.group(4)) % 12 + (12 if m.group(7) == "PM" else 0)
+        d = datetime.strptime("%s %s %s %02d:%s:%s" % (m.group(1), m.group(2), m.group(3), h, m.group(5), m.group(6)), "%d %b %Y %H:%M:%S")
+        return d.replace(tzinfo=timezone(timedelta(hours=US_TZ[m.group(8)]))).astimezone(SGT)
+    d = parsedate_to_datetime(v.strip())
+    if d.tzinfo is None: d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(SGT)
+
 def clean(s):
     s = html.unescape(re.sub(r"<[^>]+>", " ", s or ""))
     s = re.sub(r"\s*Visit RotoWire\.com for more analysis on this update\.?", "", s)
@@ -35,7 +47,7 @@ prev = {}
 if os.path.exists("fantasy.json"):
     try: prev = json.load(open("fantasy.json", encoding="utf-8"))
     except Exception: prev = {}
-items = {x["id"]: x for x in prev.get("items", [])}
+items = {x["id"]: x for x in prev.get("items", []) if prev.get("datefix") == 2 or x.get("src") != "ROTO"}
 names = prev.get("names", {})
 
 for sport, src, url, kind in FEEDS:
@@ -44,7 +56,7 @@ for sport, src, url, kind in FEEDS:
     for it in root.iter("item"):
         g = lambda k: (it.find(k).text or "") if it.find(k) is not None else ""
         title = clean(g("title"))
-        try: d = parsedate_to_datetime(g("pubDate").strip()).astimezone(SGT)
+        try: d = parse_date(g("pubDate"))
         except Exception: continue
         if not title or NOW - d > KEEP[kind]: continue
         key = src + "-" + re.sub(r"\W+", "", title.lower())[:70]
@@ -78,6 +90,6 @@ for sport in ("nba", "nfl"):
             print("sleeper players skip", sport, e)
     trending[sport.upper()] = [dict(names.get(sport + ":" + t["player_id"], {"n": t["player_id"]}), adds=t["count"]) for t in tr]
 
-json.dump({"updated": NOW.strftime("%Y-%m-%d %H:%M"), "items": out[:400], "trending": trending, "names": names},
+json.dump({"updated": NOW.strftime("%Y-%m-%d %H:%M"), "datefix": 2, "items": out[:400], "trending": trending, "names": names},
           open("fantasy.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0)
 print(len(out), "fantasy items;", {k: len(v) for k, v in trending.items()}, "trending")
