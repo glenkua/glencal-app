@@ -1,7 +1,7 @@
 // GlenCal TOOLS: calculator with tape, FX converter, TVM, rates, % change. Works offline; nothing is stored or sent.
 var Tools = (function () {
   'use strict';
-  var root = null, tool = 'calc', getMkt = function () { return null; }, onTape = function () {};
+  var root = null, tool = 'calc', getMkt = function () { return null; }, onTape = function () {}, onSave = null;
   var TAPE_MAX = 30;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
@@ -465,6 +465,76 @@ var Tools = (function () {
     return h;
   }
 
+  // ---------- Save to Notes: a plain-text summary of the open tool ----------
+  function stampNow() {
+    var d = new Date();
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+  function summary() {
+    var t = '', L = [], money = function (v) { return fmt(v, 2); };
+    if (tool === 'calc') {
+      t = 'Calculations';
+      L = tape.slice(0, 15).reverse().map(function (x) { return groupExpr(x.e) + ' = ' + fmt(x.r); });
+      if (!L.length) return null;
+    } else if (tool === 'fx') {
+      var v = usdValues(), amt = parseNum(fxAmt);
+      if (!isFinite(amt) || !v.u[fxFrom]) return null;
+      t = 'FX: ' + fmt(amt, 2) + ' ' + fxFrom;
+      L.push(fmt(amt, 2) + ' ' + fxFrom + ' =');
+      ORDER.filter(function (c) { return v.u[c] && c !== fxFrom; }).forEach(function (c) { L.push('  ' + c + ' ' + fmt(amt * v.u[fxFrom] / v.u[c], NODEC[c] ? 0 : 2)); });
+      L.push('—', 'Mid rates, delayed' + (v.when ? ' (' + v.when + ' SGT)' : ''));
+    } else if (tool === 'tvm') {
+      t = 'TVM';
+      L = ['N: ' + tvm.N, 'I/Y: ' + tvm.IY + '% a year', 'PV: ' + tvm.PV, 'PMT: ' + tvm.PMT, 'FV: ' + tvm.FV, 'Payments a year: ' + tvm.PY + (tvm.BEGIN ? ', at start of period' : ', at end of period')];
+    } else if (tool === 'rates') {
+      var r = parseNum(rt.rate) / 100, rc = toCont(r, rt.from), fname = FREQ.filter(function (x) { return x[0] === rt.from; })[0][1];
+      t = 'Rates: ' + rt.rate + '% ' + fname.toLowerCase();
+      L.push('Rate: ' + rt.rate + '% ' + fname.toLowerCase(), 'Equivalent:');
+      FREQ.forEach(function (x) { if (x[0] !== rt.from) L.push('  ' + x[1] + ' ' + fmt(fromCont(rc, x[0]) * 100, 4) + '%'); });
+      var T = parseNum(rt.tenor) / (rt.tunit === 'd' ? 365 : rt.tunit === 'm' ? 12 : 1), A = parseNum(rt.amt);
+      if (T > 0) { var tot = Math.exp(rc * T) - 1; L.push('—', 'Over ' + rt.tenor + ' ' + ({ d: 'days', m: 'months', y: 'years' })[rt.tunit] + ': ' + fmt(tot * 100, 4) + '% compounded (simple ' + fmt(r * T * 100, 4) + '%)'); if (A) L.push(fmt(A, 0) + ' grows to ' + money(A * (1 + tot))); }
+      var dv = parseNum(rt.notional) * parseNum(rt.dur) * 0.0001;
+      if (isFinite(dv)) L.push('—', 'DV01: notional ' + rt.notional + ', duration ' + rt.dur + ' = ' + money(dv) + ' per bp; ' + rt.move + 'bp = ' + money(dv * parseNum(rt.move)));
+      var b = bond(parseNum(rt.cpn) / 100, parseNum(rt.yrs), +rt.bfreq, parseNum(rt.yld) / 100);
+      if (isFinite(b.price)) L.push('Bond ' + rt.cpn + '% ' + rt.yrs + 'y at ' + rt.yld + '%: price ' + fmt(b.price, 4) + ', mod. duration ' + fmt(b.mod, 3));
+    } else if (tool === 'pct') {
+      var a = parseNum(pc.a), b2 = parseNum(pc.b), d = b2 - a, yrs = parseNum(pc.yrs);
+      if (!isFinite(a) || !isFinite(b2)) return null;
+      t = '% change ' + pc.a + ' → ' + pc.b;
+      L = ['From ' + pc.a + ' to ' + pc.b, 'Change: ' + fmt(d), '% change: ' + fmt(d / a * 100, 4) + '%', 'In bp: ' + fmt(d * 100, 2) + 'bp', 'In pips: ' + fmt(d * (pc.jpy ? 100 : 10000), 1)];
+      if (yrs > 0) L.push('CAGR over ' + pc.yrs + 'y: ' + fmt((Math.pow(b2 / a, 1 / yrs) - 1) * 100, 4) + '%');
+    } else if (tool === 'loan') {
+      var c = lnCalc(); if (!c || c.err) return null;
+      var label = LN_TYPES.filter(function (x) { return x[0] === ln.type; })[0][1], units = { d: 'days', m: 'months', y: 'years' }[ln.unit];
+      var per = { '12': 'month', '4': 'quarter', '2': 'half-year', '1': 'year' }[ln.freq];
+      t = 'Loan: ' + ln.amt + ' at ' + ln.rate + '%';
+      L = [label, 'Amount: ' + ln.amt, 'Rate: ' + ln.rate + '%' + (ln.type === 'flat' ? ' flat' : ' a year'),
+           'Tenor: ' + ln.tenor + ' ' + units + (ln.type === 'simple' ? ', ACT/' + ln.basis : ', ' + ({ '12': 'monthly', '4': 'quarterly', '2': 'semi-annual', '1': 'annual' })[ln.freq]), '—'];
+      if (c.simple) L.push('Days: ' + fmt(c.days, 0), 'Interest at maturity: ' + money(c.interest), 'Total repaid: ' + money(c.total));
+      else {
+        if (c.flat || ln.type === 'annuity') L.push('Payment each ' + per + ': ' + money(c.first));
+        else if (ln.type === 'linear') L.push('First payment: ' + money(c.first), 'Last payment: ' + money(c.last));
+        else L.push('Interest each ' + per + ': ' + money(c.periodInt), 'Final payment: ' + money(c.last));
+        L.push('Number of payments: ' + c.N, 'Total interest: ' + money(c.interest), 'Total paid: ' + money(c.total));
+        if (c.flat) L.push('EIR (reducing balance): ' + fmt(c.eir, 2) + '%');
+      }
+    } else if (tool === 'sgtax') {
+      var x = sgCalc(), $$ = function (v) { return '$' + fmt(v, 0); };
+      t = 'Tax & CPF estimate';
+      L = ['Salary: ' + $$(x.S) + ' a month × ' + x.M, 'Bonus: ' + $$(x.B), '—', 'Income: ' + $$(x.gross), 'Your CPF: ' + $$(x.empCPF) + ' (employer ' + $$(x.erCPF) + ')',
+           'Chargeable income: ' + $$(x.ci), 'Income tax: ' + $$(x.tax) + ' (effective ' + fmt(x.gross ? x.tax / x.gross * 100 : 0, 1) + '%, top rate ' + fmt(x.marginal, 1) + '%)',
+           'Take-home: ' + $$(x.net) + ' a year (' + $$(x.net / (x.M || 12)) + ' a month)', '—', 'Estimate: IRAS resident rates, CPF 2026, age 55 and below'];
+    } else if (tool === 'pace') {
+      var U = pace.unit, dd = parseFloat(pace.dist), tt = toSec(pace.time), ps = paceSec();
+      t = 'Run: ' + (dd > 0 ? fmt(dd, 2) + ' ' + U : 'pace');
+      if (dd > 0) L.push('Distance: ' + fmt(dd, 3) + ' ' + U);
+      if (tt > 0) L.push('Time: ' + hms(tt, tt >= 3600));
+      if (ps > 0) L.push('Pace: ' + hms(ps) + ' /' + U, 'Speed: ' + fmt(3600 / ps, 2) + (U === 'km' ? ' km/h' : ' mph'));
+      if (!L.length) return null;
+    }
+    return { title: t, body: L.join('\n') + '\n\n[Saved ' + stampNow() + ']' };
+  }
+
   // ---------- shell ----------
   var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg'], ['loan', 'Interest'], ['sgtax', 'Tax'], ['pace', 'Pace']];
   function chipsHTML() {
@@ -474,7 +544,8 @@ var Tools = (function () {
     if (!root) return;
     var focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : null;
     var pos = focused && document.activeElement.selectionStart;
-    root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : tool === 'pace' ? paceHTML() : tool === 'sgtax' ? sgHTML() : tool === 'loan' ? lnHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div></div>';
+    var saveBtn = onSave ? '<div class="actions"><button type="button" class="btn" data-act2="tonote">📝 Save to Notes</button></div>' : '';
+    root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : tool === 'pace' ? paceHTML() : tool === 'sgtax' ? sgHTML() : tool === 'loan' ? lnHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div>' + saveBtn + '</div>';
     var ch = document.getElementById('chist'); if (ch) ch.scrollTop = ch.scrollHeight;
     if (focused && document.getElementById(focused)) {   // keep typing position while results update
       var el = document.getElementById(focused); el.focus();
@@ -508,10 +579,11 @@ var Tools = (function () {
     if (b.dataset.copy) { if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.copy.replace(/,/g, '')).catch(function () {}); return; }
     if (b.dataset.act2 === 'tape-clear') { tape = []; onTape([]); draw(); return; }
     if (b.dataset.act2 === 'px2y') return priceToYield();
+    if (b.dataset.act2 === 'tonote') { var sm = summary(); if (!sm) return flash(tool === 'calc' ? 'Do a calculation first.' : 'Fill in the inputs first.'); return onSave(sm); }
   }
   return {
-    init: function (el, mktGetter, tapeSaver) {
-      root = el; getMkt = mktGetter; if (tapeSaver) onTape = tapeSaver;
+    init: function (el, mktGetter, tapeSaver, noteSaver) {
+      root = el; getMkt = mktGetter; if (tapeSaver) onTape = tapeSaver; if (noteSaver) onSave = noteSaver;
       root.addEventListener('click', onClick);
       root.addEventListener('input', onInput);
       root.addEventListener('beforeinput', function (e) {
@@ -530,6 +602,6 @@ var Tools = (function () {
     setTape: function (list) { tape = (list || []).filter(function (t) { return t && isFinite(t.r); }).slice(0, TAPE_MAX); ans = tape.length ? tape[0].r : 0; },
     select: function (t) { tool = t; draw(); },
     draw: draw,
-    _test: { ln: ln, lnCalc: lnCalc, sg: sg, sgCalc: sgCalc, sgTax: sgTax, groupStr: groupStr, groupExpr: groupExpr, liveFormat: liveFormat, rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
+    _test: { summary: summary, select: function (t) { tool = t; }, ln: ln, lnCalc: lnCalc, sg: sg, sgCalc: sgCalc, sgTax: sgTax, groupStr: groupStr, groupExpr: groupExpr, liveFormat: liveFormat, rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
   };
 })();

@@ -592,7 +592,7 @@
     var n = notes.filter(function (x) { return x.id === id; })[0]; if (!n) return;
     notes = notes.filter(function (x) { return x.id !== id; }); persist(); renderNotes();
     noteUndo = n; lastDeleted = null;
-    $('toastMsg').textContent = 'Deleted note: ' + noteTitle(n); $('toast').hidden = false;
+    $('undo').hidden = false; $('toastMsg').textContent = 'Deleted note: ' + noteTitle(n); $('toast').hidden = false;
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { $('toast').hidden = true; noteUndo = null; }, 6000);
   }
   $('notes').addEventListener('pointerdown', function (e) {
@@ -630,7 +630,19 @@
   $('tab-fan').addEventListener('click', function () { setTab('fan'); });
   $('tab-tools').addEventListener('click', function () { setTab('tools'); });
   var tapeTimer = null;
-  Tools.init($('tools'), function () { return MKT; }, function (t) { calcTape = t; clearTimeout(tapeTimer); tapeTimer = setTimeout(persist, 800); });
+  Tools.init($('tools'), function () { return MKT; }, function (t) { calcTape = t; clearTimeout(tapeTimer); tapeTimer = setTimeout(persist, 800); }, showSaveToNote);
+  var pendingSum = null;
+  function showSaveToNote(sum) {
+    pendingSum = sum;
+    openSheet('<h2>Save to Notes</h2><div class="f"><label>Name<input id="sv-name" value="' + esc(sum.title) + '"></label>' +
+      '<label>Description (optional)<textarea id="sv-desc" style="min-height:4.5rem" placeholder="e.g. dealer quote for the new car"></textarea></label></div>' +
+      '<div class="src">' + esc(sum.body) + '</div>' +
+      '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button><button class="btn primary" type="button" data-act="sv-save">Save</button></div>');
+  }
+  function flashToast(msg) {
+    $('undo').hidden = true; $('toastMsg').textContent = msg; $('toast').hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { $('toast').hidden = true; $('undo').hidden = false; }, 2500);
+  }
   $('tchips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-tool]'); if (!b) return;
     Tools.select(b.getAttribute('data-tool')); $('tchips').innerHTML = Tools.chips(); SC().scrollTop = 0;
@@ -1270,7 +1282,7 @@
     items = items.filter(function (i) { return i.id !== id; }); persist();
     lastDeleted = it;
     refresh(); SC().scrollTop = y;
-    $('toastMsg').textContent = 'Deleted: ' + it.title;
+    $('undo').hidden = false; $('toastMsg').textContent = 'Deleted: ' + it.title;
     $('toast').hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { $('toast').hidden = true; lastDeleted = null; }, 6000);
@@ -1501,7 +1513,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 0bdad3ef4a65</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c3915c1cb783</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1685,6 +1697,12 @@
     else if (act === 'ask-discard') { pending = null; askHistory.push({ q: '(discard)', a: 'Discarded.' }); showAsk(); }
     else if (act === 'import') showImport();
     else if (act === 'rules') showRules();
+    else if (act === 'sv-save') {
+      if (!pendingSum) return;
+      var nm = $('sv-name').value.trim() || pendingSum.title, ds = $('sv-desc').value.trim(), nowIso = new Date().toISOString();
+      notes.push({ id: 'n' + uid(), title: nm, body: (ds ? ds + '\n\n' : '') + pendingSum.body, pinned: false, created: nowIso, updated: nowIso });
+      pendingSum = null; persist(); closeSheet(); flashToast('Saved to Notes');
+    }
     else if (act === 'n-done') { noteChanged(); noteEd = null; persist(); closeSheet(); if (tab === 'notes') renderNotes(); }
     else if (act === 'n-pin') { noteEd.pinned = !noteEd.pinned; b.textContent = noteEd.pinned ? 'Unpin' : '📌 Pin'; noteChanged(); }
     else if (act === 'n-ai') noteTidy();
