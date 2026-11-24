@@ -26,6 +26,22 @@ var Tools = (function () {
     return v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
   }
 
+  // ---------- thousands separators ----------
+  function groupInt(d) { return d.replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function groupStr(v) {   // "1234567.5" -> "1,234,567.5"; leaves shorthand like "10m" and anything else alone
+    var m = /^(-?)([\d,]*)(\.\d*)?([a-z]*)$/i.exec(String(v == null ? '' : v).replace(/\s/g, ''));
+    return m ? m[1] + groupInt(m[2].replace(/,/g, '')) + (m[3] || '') + (m[4] || '') : String(v);
+  }
+  function groupExpr(e) { return String(e).replace(/\d+(\.\d*)?/g, function (n) { var i = n.indexOf('.'); return i < 0 ? groupInt(n) : groupInt(n.slice(0, i)) + n.slice(i); }); }
+  function liveFormat(el) {   // regroup while typing and keep the caret after the same digit
+    var v = el.value, pos = el.selectionStart == null ? v.length : el.selectionStart, out = groupStr(v);
+    if (out === v) return;
+    var before = v.slice(0, pos).replace(/,/g, '').length, cnt = 0, np = 0;
+    while (np < out.length && cnt < before) { if (out[np] !== ',') cnt++; np++; }
+    el.value = out;
+    try { el.setSelectionRange(np, np); } catch (e) {}
+  }
+
   // ---------- CALC: safe expression evaluator (no eval) ----------
   var OPS = { '+': [1, 'L'], '-': [1, 'L'], '*': [2, 'L'], '/': [2, 'L'], '^': [3, 'R'], 'neg': [4, 'R'] };
   function tokenize(src) {
@@ -84,9 +100,9 @@ var Tools = (function () {
         (tape.length ? '<button type="button" class="cclear" data-act2="tape-clear">CLEAR</button>' : '') +
         '<div class="chist" id="chist">' + (hist.length ? hist.map(function (t) {
           var n = tape.indexOf(t);
-          return '<button type="button" class="tl" data-tape="' + n + '"><span class="te">' + esc(t.e) + '</span><span class="tr2">= ' + esc(fmt(t.r)) + '</span></button>';
+          return '<button type="button" class="tl" data-tape="' + n + '"><span class="te">' + esc(groupExpr(t.e)) + '</span><span class="tr2">= ' + esc(fmt(t.r)) + '</span></button>';
         }).join('') : '<p class="chint">Workings show here. Tap a line to reuse its result. Shorthand: 10m, 2.5k, 1bn.</p>') + '</div>' +
-        '<div class="cexpr">' + esc(expr || ' ') + '</div>' +
+        '<div class="cexpr">' + esc(expr ? groupExpr(expr) : ' ') + '</div>' +
         '<button type="button" class="cres" data-copy="' + esc(preview) + '" aria-label="Copy result">' + esc(preview || (expr ? '…' : '0')) + '</button>' +
       '</div>' +
       '<div class="ckeys">' + KEYS.map(function (k) {
@@ -139,7 +155,7 @@ var Tools = (function () {
   }
 
   // ---------- TVM ----------
-  var tvm = { N: '120', IY: '3.5', PV: '500000', PMT: '', FV: '0', PY: '12', BEGIN: false };
+  var tvm = { N: '120', IY: '3.5', PV: '500,000', PMT: '', FV: '0', PY: '12', BEGIN: false };
   function tvmSolve(which) {
     var N = parseNum(tvm.N), iy = parseNum(tvm.IY), PV = parseNum(tvm.PV), PMT = parseNum(tvm.PMT), FV = parseNum(tvm.FV), py = +tvm.PY, t = tvm.BEGIN ? 1 : 0;
     var r = iy / 100 / py;
@@ -166,7 +182,7 @@ var Tools = (function () {
       if (!ok && Math.abs(f(N, res / py / 100, PV, PMT, FV)) > 1e-4 * (Math.abs(PV) + Math.abs(FV) + Math.abs(PMT) * N + 1)) res = NaN;
     }
     if (!isFinite(res)) { flash('No solution with these inputs. Check signs: money paid out is negative.'); return; }
-    tvm[which] = String(+res.toPrecision(10));
+    tvm[which] = groupStr(String(+res.toPrecision(10)));
     draw();
   }
   function tvmHTML() {
@@ -321,6 +337,7 @@ var Tools = (function () {
   function flash(m) { var e = document.getElementById('tmsg'); if (e) { e.textContent = m; e.hidden = false; } }
   function onInput(e) {
     var id = e.target.id; if (!id) return;
+    if (e.target.tagName === 'INPUT' && e.target.getAttribute('inputmode') === 'decimal') liveFormat(e.target);
     var v = e.target.value;
     if (id === 'fx-amt') fxAmt = v; else if (id === 'fx-from') fxFrom = v;
     else if (id.indexOf('tvm-') === 0) { var k = id.slice(4); if (k === 'BG') tvm.BEGIN = v === '1'; else tvm[k] = v; return; }   // TVM recalculates on Solve only
@@ -348,12 +365,22 @@ var Tools = (function () {
       root = el; getMkt = mktGetter; if (tapeSaver) onTape = tapeSaver;
       root.addEventListener('click', onClick);
       root.addEventListener('input', onInput);
+      root.addEventListener('beforeinput', function (e) {
+        var el = e.target;
+        if (e.inputType !== 'deleteContentBackward' || el.tagName !== 'INPUT' || el.getAttribute('inputmode') !== 'decimal') return;
+        var a = el.selectionStart, b = el.selectionEnd;
+        if (a !== b || a < 2 || el.value[a - 1] !== ',') return;
+        e.preventDefault();
+        el.value = el.value.slice(0, a - 2) + el.value.slice(a - 1);
+        try { el.setSelectionRange(a - 2, a - 2); } catch (x) {}
+        onInput({ target: el });
+      });
       root.addEventListener('change', onInput);
     },
     chips: chipsHTML,
     setTape: function (list) { tape = (list || []).filter(function (t) { return t && isFinite(t.r); }).slice(0, TAPE_MAX); ans = tape.length ? tape[0].r : 0; },
     select: function (t) { tool = t; draw(); },
     draw: draw,
-    _test: { rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
+    _test: { groupStr: groupStr, groupExpr: groupExpr, liveFormat: liveFormat, rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
   };
 })();
