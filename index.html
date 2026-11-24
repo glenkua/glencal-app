@@ -123,6 +123,12 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 /* tools */
 .toolsbox { padding-top: 0.6rem; display: flex; flex-direction: column; gap: 0.7rem; }
 .cdisp { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.6rem; text-align: right; box-shadow: inset 0 2px 6px rgba(0,0,0,0.6); }
+.cdisp { position: relative; }
+.chist { max-height: 11rem; min-height: 4.5rem; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; text-align: left; border-bottom: 1px dashed var(--line); margin-bottom: 0.35rem; padding-right: 3.2rem; }
+.chist .tl { all: unset; box-sizing: border-box; display: flex; justify-content: space-between; gap: 0.6rem; width: 100%; padding: 0.18rem 0; cursor: pointer; font-size: 0.95rem; }
+.chist .tl:first-child { margin-top: auto; }
+.chint { margin: auto 0 0.3rem; color: var(--muted); font-size: 0.8rem; }
+.cclear { all: unset; position: absolute; top: 0.4rem; right: 0.5rem; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0.15rem 0.35rem; cursor: pointer; }
 .cexpr { color: var(--muted); min-height: 1.3em; overflow-wrap: anywhere; font-size: 1rem; }
 .cres { all: unset; display: block; width: 100%; text-align: right; font-size: 2rem; font-weight: 800; color: var(--amber); overflow-wrap: anywhere; cursor: pointer; }
 .ckeys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; margin-top: 0.5rem; }
@@ -130,6 +136,7 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .ck2.op { color: var(--amber); }
 .ck2.fn { color: var(--cyan); font-size: 1rem; }
 .ck2.eq { background: var(--amber); color: var(--on-amber); border-color: var(--amber); }
+.ck2.del { color: var(--red); font-size: 1.55rem; border-color: rgba(255,95,86,0.55); }
 .ck2:active { transform: translateY(1px); box-shadow: none; }
 .tapehead { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 0.75rem; letter-spacing: 0.12em; margin-top: 0.6rem; }
 .tape .tl { all: unset; box-sizing: border-box; display: flex; justify-content: space-between; gap: 0.6rem; width: 100%; padding: 0.35rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }

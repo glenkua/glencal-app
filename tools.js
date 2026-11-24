@@ -73,20 +73,25 @@ var Tools = (function () {
     return s[0];
   }
   var expr = '', ans = 0, tape = [];
-  var KEYS = ['C', '⌫', '%', '÷', '7', '8', '9', '×', '4', '5', '6', '−', '1', '2', '3', '+', '(', '0', '.', ')', '±', 'ANS', '^', '='];
+  var KEYS = ['C', '(', ')', '⌫', '7', '8', '9', '÷', '4', '5', '6', '×', '1', '2', '3', '−', '±', '0', '.', '+', '%', '^', 'ANS', '='];
   function calcHTML() {
     var preview = '';
     if (expr) { try { preview = fmt(evaluate(expr, ans)); } catch (e) { preview = ''; } }
+    var hist = tape.slice(0, 30).reverse();   // oldest at the top, newest just above the current line
     return '<div class="calc">' +
-      '<div class="cdisp"><div class="cexpr">' + esc(expr || ' ') + '</div><button type="button" class="cres" data-copy="' + esc(preview) + '" aria-label="Copy result">' + esc(preview || (expr ? '…' : '0')) + '</button></div>' +
+      '<div class="cdisp">' +
+        (tape.length ? '<button type="button" class="cclear" data-act2="tape-clear">CLEAR</button>' : '') +
+        '<div class="chist" id="chist">' + (hist.length ? hist.map(function (t) {
+          var n = tape.indexOf(t);
+          return '<button type="button" class="tl" data-tape="' + n + '"><span class="te">' + esc(t.e) + '</span><span class="tr2">= ' + esc(fmt(t.r)) + '</span></button>';
+        }).join('') : '<p class="chint">Workings show here. Tap a line to reuse its result. Shorthand: 10m, 2.5k, 1bn.</p>') + '</div>' +
+        '<div class="cexpr">' + esc(expr || ' ') + '</div>' +
+        '<button type="button" class="cres" data-copy="' + esc(preview) + '" aria-label="Copy result">' + esc(preview || (expr ? '…' : '0')) + '</button>' +
+      '</div>' +
       '<div class="ckeys">' + KEYS.map(function (k) {
-        var cls = k === '=' ? ' eq' : /[÷×−+^%()]/.test(k) ? ' op' : (k === 'C' || k === '⌫' || k === '±' || k === 'ANS') ? ' fn' : '';
-        return '<button type="button" class="ck2' + cls + '" data-k="' + esc(k) + '">' + esc(k) + '</button>';
-      }).join('') + '</div>' +
-      '<div class="tapehead"><span>TAPE</span>' + (tape.length ? '<button type="button" class="btn link" data-act2="tape-clear">Clear</button>' : '') + '</div>' +
-      '<div class="tape">' + (tape.length ? tape.map(function (t, n) {
-        return '<button type="button" class="tl" data-tape="' + n + '"><span class="te">' + esc(t.e) + '</span><span class="tr2">= ' + esc(fmt(t.r)) + '</span></button>';
-      }).join('') : '<p class="small">Your workings appear here. Tap a line to reuse its result. Shorthand: 10m, 2.5k, 1bn.</p>') + '</div></div>';
+        var cls = k === '=' ? ' eq' : k === '⌫' ? ' del' : /[÷×−+^%()]/.test(k) ? ' op' : (k === 'C' || k === '±' || k === 'ANS') ? ' fn' : '';
+        return '<button type="button" class="ck2' + cls + '" data-k="' + esc(k) + '"' + (k === '⌫' ? ' aria-label="Delete"' : '') + '>' + esc(k) + '</button>';
+      }).join('') + '</div></div>';
   }
   function press(k) {
     if (k === 'C') expr = '';
@@ -112,7 +117,7 @@ var Tools = (function () {
     USDKRW: ['KRW', 'inv'], USDINR: ['INR', 'inv'], USDMYR: ['MYR', 'inv'], USDIDR: ['IDR', 'inv'], USDTHB: ['THB', 'inv'] };
   var ORDER = ['SGD', 'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'NZD', 'CNH', 'HKD', 'CHF', 'CAD', 'KRW', 'INR', 'MYR', 'IDR', 'THB'];
   var NODEC = { JPY: 1, KRW: 1, IDR: 1 };
-  var fxAmt = '1,000,000', fxFrom = 'USD';
+  var fxAmt = '1,000,000', fxFrom = 'SGD';
   function usdValues() {
     var m = getMkt(), u = { USD: 1 };
     ((m && m.items) || []).forEach(function (q) { var p = PAIRS[q.k]; if (p && q.price) u[p[0]] = p[1] === 'dir' ? q.price : 1 / q.price; });
@@ -121,7 +126,7 @@ var Tools = (function () {
   function fxHTML() {
     var v = usdValues(), amt = parseNum(fxAmt), list = ORDER.filter(function (c) { return v.u[c]; });
     if (list.length < 2) return '<p class="empty">No rates yet. Open the app online once so the latest rates can load.</p>';
-    if (list.indexOf(fxFrom) < 0) fxFrom = 'USD';
+    if (list.indexOf(fxFrom) < 0) fxFrom = list.indexOf('SGD') >= 0 ? 'SGD' : 'USD';
     var usd = amt * v.u[fxFrom];
     return '<div class="f"><div class="two"><label>Amount<input id="fx-amt" inputmode="decimal" value="' + esc(fxAmt) + '"></label>' +
       '<label>Currency<select id="fx-from">' + list.map(function (c) { return '<option' + (c === fxFrom ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></label></div></div>' +
@@ -219,6 +224,11 @@ var Tools = (function () {
       ['In bp (if these are rates in %)', fmt(d * 100, 2) + 'bp'],
       ['In pips (FX)', fmt(d * (pc.jpy ? 100 : 10000), 1) + ' pips']];
     if (isFinite(yrs) && yrs > 0) rows.push(['Annualised (CAGR) over ' + esc(pc.yrs) + 'y', fmt((Math.pow(b / a, 1 / yrs) - 1) * 100, 4) + '%']);
+    // same move seen from the other currency's side (e.g. USDSGD -> SGDUSD)
+    var ia = 1 / a, ib = 1 / b, id = ib - ia;
+    rows.push(['<b>Other way round (1/x)</b>', fmt(ia, 6) + ' → ' + fmt(ib, 6)]);
+    rows.push(['% change, other way', fmt(id / ia * 100, 4) + '%']);
+    if (!pc.jpy) rows.push(['Pips, other way', fmt(id * 10000, 1) + ' pips']);
     return '<div class="f"><div class="two"><label>From<input id="pc-a" inputmode="decimal" value="' + esc(pc.a) + '"></label>' +
       '<label>To<input id="pc-b" inputmode="decimal" value="' + esc(pc.b) + '"></label></div>' +
       '<div class="two"><label>Years (for CAGR, optional)<input id="pc-yrs" inputmode="decimal" value="' + esc(pc.yrs) + '"></label>' +
@@ -236,6 +246,7 @@ var Tools = (function () {
     var focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : null;
     var pos = focused && document.activeElement.selectionStart;
     root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div></div>';
+    var ch = document.getElementById('chist'); if (ch) ch.scrollTop = ch.scrollHeight;
     if (focused && document.getElementById(focused)) {   // keep typing position while results update
       var el = document.getElementById(focused); el.focus();
       try { if (pos != null) el.setSelectionRange(pos, pos); } catch (e) {}
