@@ -422,8 +422,8 @@
   function noteTitle(n) { return n.title || (n.body || '').split('\n')[0].replace(/^[•\-\s]+/, '').slice(0, 80) || 'Untitled'; }
   function noteWhen(iso) {
     var d = new Date(iso); if (isNaN(d)) return '';
-    if (GC.iso(d) === todayISO) return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-    var l = dLabel(GC.iso(d)); return l.day + ' ' + l.mon + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+    var l = dLabel(GC.iso(d));
+    return l.day + ' ' + l.mon + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '') + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
   function renderNotes() {
     var q = $('q').value.trim().toLowerCase();
@@ -432,7 +432,9 @@
     var row = function (n) {
       var body = n.title ? n.body : (n.body || '').split('\n').slice(1).join('\n');
       return '<div class="nwrap"><div class="swipe-del"><button type="button" data-ndel="' + esc(n.id) + '">DELETE</button></div>' +
-        '<button type="button" class="nnote" data-note="' + esc(n.id) + '"><span class="nt1">' + esc(noteTitle(n)) + '</span><span class="nd">' + esc(noteWhen(n.updated)) + '</span>' +
+        '<button type="button" class="nnote" data-note="' + esc(n.id) + '"><span class="nt1">' + esc(noteTitle(n)) + '</span><span class="nd">' +
+        (function () { var t = (n.body.match(/^\s*[☐☑] /gm) || []).length, d = (n.body.match(/^\s*☑ /gm) || []).length; return t ? '<span class="nck' + (d === t ? ' all' : '') + '">' + d + '/' + t + ' ✓</span> ' : ''; })() +
+        esc(noteWhen(n.updated)) + '</span>' +
         '<span class="np">' + esc((body || '').trim().slice(0, 240)) + '</span></button></div>';
     };
     var pinned = list.filter(function (n) { return n.pinned; }), rest = list.filter(function (n) { return !n.pinned; });
@@ -446,6 +448,11 @@
     noteEd = notes.filter(function (n) { return n.id === id; })[0] || { id: 'n' + uid(), title: '', body: '', pinned: false, created: now, updated: now };
     noteDelArmed = false;
     openSheet('<div class="ned f"><input id="n-title" placeholder="Title (optional)" value="' + esc(noteEd.title) + '">' +
+      '<div class="ntool" id="ntool">' +
+        [['bullet', '•', 'Bullet list'], ['num', '1.', 'Numbered list'], ['check', '☐', 'Checklist'], ['tick', '☑', 'Tick or untick this line'],
+         ['time', '🕐', 'Insert date and time'], ['line', '—', 'Divider'], ['share', 'Share', 'Share this note']].map(function (t) {
+          return '<button type="button" class="key" data-fmt="' + t[0] + '" aria-label="' + t[2] + '">' + t[1] + '</button>';
+        }).join('') + '</div>' +
       '<textarea id="n-body" placeholder="Write anything: call notes, levels to watch, ideas…">' + esc(noteEd.body) + '</textarea></div>' +
       '<div id="n-msg" class="small" hidden></div>' +
       '<div class="actions"><button class="btn" type="button" data-act="n-pin">' + (noteEd.pinned ? 'Unpin' : '📌 Pin') + '</button>' +
@@ -481,6 +488,71 @@
     } catch (e) { noteMsg('AI couldn\'t tidy that (' + esc(e.message || e) + '). Your note is unchanged.'); }
   }
   $('sheet').addEventListener('input', function (e) { if (noteEd && (e.target.id === 'n-title' || e.target.id === 'n-body')) noteChanged(); });
+
+  // ---- note formatting: plain text with list markers, so it stays readable anywhere you share it ----
+  var LIST_RE = /^(\s*)(• |(\d+)\. |☐ |☑ )?(.*)$/;
+  function lineBounds(v, a, b) {
+    var s = v.lastIndexOf('\n', a - 1) + 1, e = v.indexOf('\n', b); if (e < 0) e = v.length;
+    return [s, e];
+  }
+  function setBody(ta, v, caret) { ta.value = v; ta.focus(); try { ta.setSelectionRange(caret, caret); } catch (x) {} noteChanged(); }
+  function fmtLines(kind) {
+    var ta = $('n-body'), v = ta.value, r = lineBounds(v, ta.selectionStart, ta.selectionEnd);
+    var lines = v.slice(r[0], r[1]).split('\n');
+    var prev = v.slice(0, Math.max(0, r[0] - 1)).split('\n').pop(), pm = LIST_RE.exec(prev), n = pm && pm[3] ? +pm[3] + 1 : 1;
+    var allSame = lines.every(function (l) { var m = LIST_RE.exec(l); return kind === 'bullet' ? m[2] === '• ' : kind === 'num' ? !!m[3] : (m[2] === '☐ ' || m[2] === '☑ '); });
+    var out = lines.map(function (l) {
+      var m = LIST_RE.exec(l), ind = m[1], txt = m[4];
+      if (allSame) return ind + txt;                                   // tapping again removes the markers
+      if (kind === 'bullet') return ind + '• ' + txt;
+      if (kind === 'num') return ind + (n++) + '. ' + txt;
+      return ind + (m[2] === '☑ ' ? '☑ ' : '☐ ') + txt;
+    }).join('\n');
+    setBody(ta, v.slice(0, r[0]) + out + v.slice(r[1]), r[0] + out.length);
+  }
+  function tickLines() {
+    var ta = $('n-body'), v = ta.value, r = lineBounds(v, ta.selectionStart, ta.selectionEnd), pos = ta.selectionStart;
+    var out = v.slice(r[0], r[1]).split('\n').map(function (l) {
+      var m = LIST_RE.exec(l);
+      return m[2] === '☐ ' ? m[1] + '☑ ' + m[4] : m[2] === '☑ ' ? m[1] + '☐ ' + m[4] : m[1] + '☐ ' + (m[2] || '') + m[4];
+    }).join('\n');
+    setBody(ta, v.slice(0, r[0]) + out + v.slice(r[1]), Math.min(pos + (out.length - (r[1] - r[0])), r[0] + out.length));
+  }
+  function insertText(t) {
+    var ta = $('n-body'), v = ta.value, a = ta.selectionStart, b = ta.selectionEnd;
+    if (a > 0 && v[a - 1] !== '\n' && t.charAt(0) === '\n') t = t; else if (a === 0 || v[a - 1] === '\n') t = t.replace(/^\n/, '');
+    setBody(ta, v.slice(0, a) + t + v.slice(b), a + t.length);
+  }
+  function shareNote() {
+    noteChanged();
+    var text = (noteEd.title ? noteEd.title + '\n\n' : '') + noteEd.body;
+    if (navigator.share) navigator.share({ title: noteEd.title || 'Note', text: text }).catch(function () {});
+    else if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { noteMsg('Copied to clipboard.'); });
+  }
+  // keep the keyboard up while tapping the formatting bar
+  $('sheet').addEventListener('pointerdown', function (e) { if (e.target.closest('#ntool')) e.preventDefault(); });
+  $('sheet').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-fmt]'); if (!b || !noteEd) return;
+    var f = b.getAttribute('data-fmt'), now = new Date(), l = dLabel(GC.iso(now));
+    if (f === 'bullet' || f === 'num' || f === 'check') fmtLines(f);
+    else if (f === 'tick') tickLines();
+    else if (f === 'time') insertText('\n[' + l.day + ' ' + l.mon.charAt(0) + l.mon.slice(1).toLowerCase() + ' ' + ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2) + '] ');
+    else if (f === 'line') insertText('\n———————————\n');
+    else if (f === 'share') shareNote();
+  });
+  // return on a list line starts the next item; return on an empty item ends the list
+  $('sheet').addEventListener('keydown', function (e) {
+    if (e.target.id !== 'n-body' || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    var ta = e.target, v = ta.value, a = ta.selectionStart;
+    if (a !== ta.selectionEnd) return;
+    var s = v.lastIndexOf('\n', a - 1) + 1, line = v.slice(s, a), m = LIST_RE.exec(line);
+    if (!m[2]) return;
+    e.preventDefault();
+    if (!m[4].trim() && v.slice(a, (v.indexOf('\n', a) + 1 || v.length + 1) - 1).trim() === '') { setBody(ta, v.slice(0, s) + m[1] + v.slice(a), s + m[1].length); return; }
+    var next = m[3] ? (+m[3] + 1) + '. ' : m[2] === '☑ ' ? '☐ ' : m[2];
+    var ins = '\n' + m[1] + next;
+    setBody(ta, v.slice(0, a) + ins + v.slice(a), a + ins.length);
+  });
 
   function setTab(t) {
     if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
@@ -1399,7 +1471,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 0150b21bf39d</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 8ba7d5fb2814</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {

@@ -146,6 +146,11 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .nnote .nd { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
 .nnote .np { grid-column: 1 / -1; color: var(--muted); font-size: 0.88rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; }
 .ned input { font-size: 18px !important; font-weight: 700; }
+.ntool { display: flex; gap: 0.3rem; overflow-x: auto; scrollbar-width: none; padding: 0.1rem 0; }
+.ntool::-webkit-scrollbar { display: none; }
+.ntool .key { font-size: 1rem; min-width: 2.4rem; text-align: center; padding: 0.45rem 0.55rem; }
+.nck { color: var(--amber); font-weight: 700; }
+.nck.all { color: var(--up); }
 .ned textarea { min-height: 46vh; line-height: 1.45; }
 .bfoot { color: var(--muted); font-size: 0.75rem; padding: 1rem 0 0.5rem; }
 /* tools */
