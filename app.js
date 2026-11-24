@@ -431,8 +431,9 @@
       .sort(function (a, b) { return a.updated < b.updated ? 1 : -1; });
     var row = function (n) {
       var body = n.title ? n.body : (n.body || '').split('\n').slice(1).join('\n');
-      return '<button type="button" class="nnote" data-note="' + esc(n.id) + '"><span class="nt1">' + esc(noteTitle(n)) + '</span><span class="nd">' + esc(noteWhen(n.updated)) + '</span>' +
-        '<span class="np">' + esc((body || '').trim().slice(0, 240)) + '</span></button>';
+      return '<div class="nwrap"><div class="swipe-del"><button type="button" data-ndel="' + esc(n.id) + '">DELETE</button></div>' +
+        '<button type="button" class="nnote" data-note="' + esc(n.id) + '"><span class="nt1">' + esc(noteTitle(n)) + '</span><span class="nd">' + esc(noteWhen(n.updated)) + '</span>' +
+        '<span class="np">' + esc((body || '').trim().slice(0, 240)) + '</span></button></div>';
     };
     var pinned = list.filter(function (n) { return n.pinned; }), rest = list.filter(function (n) { return !n.pinned; });
     $('notes').innerHTML = (pinned.length ? '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + pinned.length + '</span></h2>' + pinned.map(row).join('') : '') +
@@ -448,7 +449,7 @@
       '<textarea id="n-body" placeholder="Write anything: call notes, levels to watch, ideas…">' + esc(noteEd.body) + '</textarea></div>' +
       '<div id="n-msg" class="small" hidden></div>' +
       '<div class="actions"><button class="btn" type="button" data-act="n-pin">' + (noteEd.pinned ? 'Unpin' : '📌 Pin') + '</button>' +
-      '<button class="btn" type="button" data-act="n-ai">AI tidy</button>' +
+
       '<button class="btn" type="button" data-act="n-events">Make events</button>' +
       '<button class="btn danger" type="button" data-act="n-del">Delete</button>' +
       '<button class="btn primary" type="button" data-act="n-done">Done</button></div>');
@@ -503,7 +504,47 @@
   }
   $('tab-brief').addEventListener('click', function () { setTab('brief'); });
   $('tab-notes').addEventListener('click', function () { setTab('notes'); });
-  $('notes').addEventListener('click', function (e) { var b = e.target.closest('[data-note]'); if (b) openNote(b.getAttribute('data-note')); });
+  // short swipe shows DELETE; a long swipe (past 60% of the width) deletes straight away. Undo for 6 seconds.
+  var nsw = null, nOpen = null, nJust = false, noteUndo = null;
+  function nSet(el, x, anim) { el.style.transition = anim ? 'transform 180ms ease' : 'none'; el.style.transform = x ? 'translateX(' + x + 'px)' : ''; }
+  function nClose() { if (nOpen) { nSet(nOpen, 0, true); nOpen = null; } }
+  function deleteNote(id) {
+    var n = notes.filter(function (x) { return x.id === id; })[0]; if (!n) return;
+    notes = notes.filter(function (x) { return x.id !== id; }); persist(); renderNotes();
+    noteUndo = n; lastDeleted = null;
+    $('toastMsg').textContent = 'Deleted note: ' + noteTitle(n); $('toast').hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { $('toast').hidden = true; noteUndo = null; }, 6000);
+  }
+  $('notes').addEventListener('pointerdown', function (e) {
+    var el = e.target.closest('.nnote'); if (!el) return;
+    if (nOpen && nOpen !== el) nClose();
+    nsw = { el: el, x0: e.clientX, y0: e.clientY, base: el === nOpen ? -el.parentNode.querySelector('.swipe-del').offsetWidth : 0, dx: 0, horiz: null };
+  });
+  $('notes').addEventListener('pointermove', function (e) {
+    if (!nsw) return;
+    var dx = e.clientX - nsw.x0, dy = e.clientY - nsw.y0;
+    if (nsw.horiz === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) nsw.horiz = Math.abs(dx) > Math.abs(dy);
+    if (!nsw.horiz) return;
+    nsw.dx = dx; nSet(nsw.el, Math.min(0, nsw.base + dx), false);
+  });
+  function nEnd() {
+    if (!nsw) return;
+    var s2 = nsw; nsw = null;
+    if (!s2.horiz) return;
+    nJust = true; setTimeout(function () { nJust = false; }, 350);
+    var w = s2.el.offsetWidth, act = s2.el.parentNode.querySelector('.swipe-del').offsetWidth, pos = s2.base + s2.dx;
+    if (pos < -0.6 * w) { nSet(s2.el, -w, true); setTimeout(function () { deleteNote(s2.el.getAttribute('data-note')); }, 170); nOpen = null; }
+    else if (pos < -act / 2) { nSet(s2.el, -act, true); nOpen = s2.el; }
+    else { nSet(s2.el, 0, true); if (nOpen === s2.el) nOpen = null; }
+  }
+  $('notes').addEventListener('pointerup', nEnd);
+  $('notes').addEventListener('pointercancel', nEnd);
+  $('notes').addEventListener('click', function (e) {
+    var d = e.target.closest('[data-ndel]'); if (d) { nOpen = null; deleteNote(d.getAttribute('data-ndel')); return; }
+    var b = e.target.closest('[data-note]'); if (!b || nJust) return;
+    if (nOpen) { nClose(); return; }
+    openNote(b.getAttribute('data-note'));
+  });
   $('tab-cal').addEventListener('click', function () { setTab('cal'); });
   $('tab-news').addEventListener('click', function () { setTab('news'); });
   $('tab-fan').addEventListener('click', function () { setTab('fan'); });
@@ -947,11 +988,7 @@
       (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
       '<div id="aiprog" hidden><div class="small" id="aiprogtxt">Starting AI…</div><div class="prog"><div id="aiprogbar"></div></div></div>' +
       '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button>' +
-      '<button class="btn" type="button" data-act="parse">Quick read</button>' +
-      (st === 'unsupported' ? '' : st === 'none'
-        ? '<button class="btn primary" type="button" data-act="ai-setup">Set up AI</button>'
-        : '<button class="btn primary" type="button" data-act="ai-read">Read with AI</button>') + '</div>' +
-      (st === 'unsupported' ? '<p class="small">AI needs WebGPU, which this browser doesn\'t offer. Quick read still works.</p>' : ''));
+      '<button class="btn primary" type="button" data-act="parse">Read dates</button></div>');
     if (prefill) $('paste').value = prefill;
     setTimeout(function () { $('paste').focus(); }, 50);
   }
@@ -1137,6 +1174,7 @@
     toastTimer = setTimeout(function () { $('toast').hidden = true; lastDeleted = null; }, 6000);
   }
   $('undo').addEventListener('click', function () {
+    if (typeof noteUndo !== 'undefined' && noteUndo) { notes.push(noteUndo); noteUndo = null; persist(); $('toast').hidden = true; clearTimeout(toastTimer); if (tab === 'notes') renderNotes(); return; }
     if (!lastDeleted) return;
     var y = SC().scrollTop;
     items.push(lastDeleted); persist();
@@ -1351,7 +1389,7 @@
   // =====================================================================
   function showMenu() {
     openSheet('<h2>Menu</h2><div class="menu">' +
-      '<button class="btn" type="button" data-act="ai-setup">AI on this iPhone</button>' +
+      (prefs('aiReady') ? '<button class="btn" type="button" data-act="ai-free">Remove AI model (frees about 1 GB)</button>' : '') +
       '<button class="btn" type="button" data-act="rules">Bills &amp; recurring</button>' +
       '<button class="btn" type="button" data-act="notify">Evening notification</button>' +
       '<button class="btn" type="button" data-act="hol-toggle">' + (holidaysOn() ? 'Hide' : 'Show') + ' Singapore holidays</button>' +
@@ -1361,7 +1399,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version ed5a7ba7fe23</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 0150b21bf39d</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1480,6 +1518,7 @@
     else if (act === 'save-one') saveOne();
     else if (act === 'del') { if (!delArmed) { delArmed = true; b.textContent = 'Tap again to delete'; } else { closeSheet(); removeItem(editing.id); } }
     else if (act === 'ai-setup') showAISetup();
+    else if (act === 'ai-free') { b.disabled = true; b.textContent = 'Removing…'; aiRemove().then(function () { prefs('aiReady', ''); showMenu(); }, function () { prefs('aiReady', ''); showMenu(); }); }
     else if (act === 'ai-download') aiDownload();
     else if (act === 'ai-remove') aiRemove();
     else if (act === 'ask-send') askSend();
