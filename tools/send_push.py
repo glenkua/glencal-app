@@ -12,7 +12,7 @@ if not key or not subs:
 vapid = Vapid.from_pem(key.encode())   # the secret is stored as PEM
 subs = json.loads(subs)
 if isinstance(subs, dict): subs = [subs]
-site = "https://" + os.environ["GITHUB_REPOSITORY_OWNER"].lower() + ".github.io/"
+site = "https://" + os.environ["GITHUB_REPOSITORY_OWNER"].lower() + ".github.io"   # VAPID contact: bare https origin, no path
 ok = 0
 for s in subs:
     try:
