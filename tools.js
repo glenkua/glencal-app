@@ -334,8 +334,9 @@ var Tools = (function () {
     }
     return { tax: tax, marginal: ci > 0 ? marg : 0 };
   }
-  function sgCalc() {
+  function sgCalc(over) {
     var S = parseNum(sg.salary) || 0, M = parseNum(sg.months) || 12, B = parseNum(sg.bonus) || 0, other = parseNum(sg.other) || 0;
+    if (over && over.bonus != null) B = over.bonus;
     var owSub = Math.min(S, CPF.owCap) * M, awSub = Math.max(0, Math.min(B, CPF.annual - owSub));
     var empCPF = CPF.emp * (owSub + awSub), erCPF = CPF.er * (owSub + awSub);
     var gross = S * M + B;
@@ -348,31 +349,51 @@ var Tools = (function () {
   function sgHTML() {
     var r = sgCalc(), $$ = function (v) { return '$' + fmt(v, 0); };
     var row = function (k, v, b) { return '<tr><td>' + (b ? '<b>' + k + '</b>' : k) + '</td><td>' + (b ? '<b>' + v + '</b>' : v) + '</td></tr>'; };
-    return '<div class="f"><div class="two"><label>Monthly salary<input id="sg-salary" inputmode="decimal" value="' + esc(sg.salary) + '"></label>' +
-      '<label>Months paid<input id="sg-months" inputmode="decimal" value="' + esc(sg.months) + '"></label></div>' +
-      '<div class="two"><label>Bonus for the year<input id="sg-bonus" inputmode="decimal" value="' + esc(sg.bonus) + '"></label>' +
-      '<label>Other reliefs (optional)<input id="sg-other" inputmode="decimal" value="' + esc(sg.other) + '"></label></div>' +
+    var h = '<div class="f"><div class="two"><label>Monthly salary<input id="sg-salary" inputmode="decimal" value="' + esc(sg.salary) + '"></label>' +
+      '<label>Bonus for the year<input id="sg-bonus" inputmode="decimal" value="' + esc(sg.bonus) + '"></label></div></div>';
+
+    // headline figures
+    h += '<div class="sgsum"><div><span>Take-home / yr</span><b>' + $$(r.net) + '</b><i>' + $$(r.net / (r.M || 12)) + ' a month</i></div>' +
+      '<div><span>Income tax</span><b>' + $$(r.tax) + '</b><i>' + fmt(r.gross ? r.tax / r.gross * 100 : 0, 1) + '% of income</i></div>' +
+      '<div><span>Your CPF</span><b>' + $$(r.empCPF) + '</b><i>+ ' + $$(r.erCPF) + ' employer</i></div></div>';
+
+    // what if the bonus (or other variable pay) changes
+    var base = r, deltas = [-20000, -10000, 0, 10000, 25000, 50000, 100000];
+    h += '<h3 class="th">WHAT IF YOUR BONUS CHANGES</h3><div class="tblwrap"><table class="mt sgt"><tr><td>Bonus</td><td>Income</td><td>Tax</td><td>Eff.</td><td>Top</td><td>Take-home</td><td>Keep of extra</td></tr>' +
+      deltas.map(function (d) {
+        var nb = base.B + d; if (nb < 0) return '';
+        var x = d ? sgCalc({ bonus: nb }) : base, dg = x.gross - base.gross;
+        var keep = d ? fmt((x.net - base.net) / dg * 100, 0) + '%' : '—';
+        return '<tr' + (d ? '' : ' class="hl"') + '><td>' + (d ? (d > 0 ? '+' : '−') + '$' + fmt(Math.abs(d) / 1000, 0) + 'k' : 'Now') + '</td><td>' + $$(x.gross) + '</td><td>' + $$(x.tax) + '</td>' +
+          '<td>' + fmt(x.gross ? x.tax / x.gross * 100 : 0, 1) + '%</td><td>' + fmt(x.marginal, 1) + '%</td><td>' + $$(x.net) + '</td><td>' + keep + '</td></tr>';
+      }).join('') + '</table></div>' +
+      '<p class="small">"Keep of extra" = how much of the extra (or lost) income stays with you after tax and CPF. Bonus above the yearly CPF limit attracts no CPF, so you keep more of it in cash.</p>';
+
+    // the bands, with yours highlighted
+    var lo = 0, cum = 0;
+    h += '<h3 class="th">TAX BANDS (YOU: ' + $$(r.ci) + ' CHARGEABLE)</h3><table class="mt sgt"><tr><td>Chargeable income</td><td>Rate</td><td>Tax at top of band</td></tr>' +
+      BANDS.map(function (bd) {
+        var hi = bd[0], mine = r.ci > lo && r.ci <= hi || (r.ci === 0 && lo === 0);
+        if (isFinite(hi)) cum += (hi - lo) * bd[1] / 100;
+        var label = isFinite(hi) ? '$' + fmt(lo / 1000, 0) + 'k – $' + fmt(hi / 1000, 0) + 'k' : 'Above $1m';
+        var out = '<tr' + (mine ? ' class="hl"' : '') + '><td>' + label + (mine ? ' ◀' : '') + '</td><td>' + bd[1] + '%</td><td>' + (isFinite(hi) ? $$(cum) : '—') + '</td></tr>';
+        lo = hi; return out;
+      }).join('') + '</table>';
+
+    // details, folded away
+    h += '<details class="sched"><summary>Full breakdown and settings</summary>' +
+      '<div class="f"><div class="two"><label>Months paid<input id="sg-months" inputmode="decimal" value="' + esc(sg.months) + '"></label>' +
+      '<label>Other reliefs<input id="sg-other" inputmode="decimal" value="' + esc(sg.other) + '"></label></div>' +
       '<div class="two"><label>Tax rebate % (if announced)<input id="sg-rebate" inputmode="decimal" value="' + esc(sg.rebate) + '"></label>' +
       '<label>Rebate cap $<input id="sg-rebateCap" inputmode="decimal" value="' + esc(sg.rebateCap) + '"></label></div></div>' +
-      '<h3 class="th">CPF</h3><table class="mt">' +
-      row('Your CPF each month', $$(r.monthlyCPF)) +
-      row('Take-home each month (before tax)', $$(r.S - r.monthlyCPF)) +
-      row('Your CPF for the year', $$(r.empCPF), true) +
-      row('Employer CPF for the year', $$(r.erCPF)) +
-      row('Bonus subject to CPF', $$(r.awSub) + (r.awSub < r.B ? ' <span class="pl">(of ' + $$(r.B) + ')</span>' : '')) + '</table>' +
-      '<h3 class="th">INCOME TAX</h3><table class="mt">' +
-      row('Employment income', $$(r.gross)) +
-      row('Reliefs (earned income $1,000 + your CPF' + (parseNum(sg.other) ? ' + other' : '') + ')', '−' + $$(r.reliefs)) +
-      row('Chargeable income', $$(r.ci)) +
-      (r.rebate ? row('Tax before rebate', $$(r.taxBefore)) + row('Rebate', '−' + $$(r.rebate)) : '') +
-      row('Estimated tax', $$(r.tax), true) +
-      row('Effective rate (on income)', fmt(r.gross ? r.tax / r.gross * 100 : 0, 2) + '%') +
-      row('Top (marginal) rate', fmt(r.marginal, 1) + '%') + '</table>' +
-      '<h3 class="th">TAKE-HOME</h3><table class="mt">' +
-      row('After CPF and tax, for the year', $$(r.net), true) +
-      row('Average per month', $$(r.net / (r.M || 12))) + '</table>' +
-      '<p class="small">Estimate for a Singapore tax resident aged 55 or below (citizen or 3rd-year+ PR). CPF: 20% you, 17% employer, on salary up to $8,000 a month and total wages up to $102,000 a year (CPF Board, 2026). ' +
-      'Tax: IRAS resident rates from YA2024 onwards; income earned in 2026 is taxed in YA2027. Reliefs are capped at $80,000. No personal tax rebate has been announced for YA2026 or YA2027; enter one if it is. CPF rounding and other income are not included.</p>';
+      '<table class="mt">' + row('Your CPF each month', $$(r.monthlyCPF)) + row('Take-home each month before tax', $$(r.S - r.monthlyCPF)) +
+      row('Bonus subject to CPF', $$(r.awSub) + (r.awSub < r.B ? ' (of ' + $$(r.B) + ')' : '')) +
+      row('Employment income', $$(r.gross)) + row('Reliefs ($1,000 earned income + your CPF' + (parseNum(sg.other) ? ' + other' : '') + ')', '−' + $$(r.reliefs)) +
+      row('Chargeable income', $$(r.ci)) + (r.rebate ? row('Tax before rebate', $$(r.taxBefore)) + row('Rebate', '−' + $$(r.rebate)) : '') +
+      row('Estimated tax', $$(r.tax), true) + '</table>' +
+      '<p class="small">Estimate for a Singapore tax resident aged 55 or below (citizen or 3rd-year+ PR). CPF 2026: 20% you, 17% employer, on salary up to $8,000 a month and total wages up to $102,000 a year. ' +
+      'Tax: IRAS resident rates from YA2024 onwards (income in 2026 is taxed in YA2027); reliefs capped at $80,000. No personal tax rebate has been announced for YA2026 or YA2027.</p></details>';
+    return h;
   }
 
   // ---------- INTEREST: loans and deposits ----------

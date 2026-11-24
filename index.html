@@ -180,6 +180,16 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .th { margin: 0.6rem 0 0.1rem; font-size: 0.8rem; letter-spacing: 0.12em; color: var(--amber); }
 .fxt td:nth-child(2) { font-weight: 700; }
 .presets { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.sgsum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.4rem; margin-top: 0.2rem; }
+.sgsum div { background: var(--raise); border: 1px solid var(--line); border-radius: 4px; padding: 0.45rem 0.5rem; display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.sgsum span { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.sgsum b { font-size: 1.1rem; color: var(--amber); overflow-wrap: anywhere; }
+.sgsum i { font-style: normal; color: var(--muted); font-size: 0.72rem; }
+.tblwrap { overflow-x: auto; }
+.sgt { font-size: 0.8rem; }
+.sgt td { padding: 0.28rem 0.25rem; white-space: nowrap; }
+.sgt tr:first-child td { color: var(--muted); font-weight: 700; }
+.mt tr.hl td { color: var(--amber); font-weight: 700; }
 .sched summary { cursor: pointer; color: var(--amber); font-weight: 700; padding: 0.5rem 0; }
 .sch { font-size: 0.78rem; }
 .sch td { padding: 0.22rem 0.15rem; }
