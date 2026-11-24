@@ -649,7 +649,11 @@
 
   // ---- Fantasy: RotoWire player alerts, Yahoo/ESPN/PFF headlines, Sleeper most-added ----
   var FAN = null, fanFilter = 'all', fanSeen = prefs('fanSeen') || '';
-  var FAN_CHIPS = [['all', 'All'], ['alert', '🚨 Alerts'], ['NBA', '🏀 NBA'], ['NFL', '🏈 NFL'], ['trend', '📈 Most added']];
+  // All = everything on; tap a category to switch it off. "Most added" is its own view, like ECON.
+  var FAN_CHIPS = [['all', 'All'], ['alert', '🚨 Alerts'], ['news', '📰 Headlines'], ['NBA', '🏀 NBA'], ['NFL', '🏈 NFL'], ['trend', '📈 Most added']];
+  var FAN_CATS = ['alert', 'news', 'NBA', 'NFL'];
+  var fanHidden = {}, fanTrend = false;
+  (prefs('fanHidden') || '').split(',').forEach(function (k) { if (k) fanHidden[k] = 1; });
   var ST_LABEL = { out: 'OUT', doubt: 'Q', in: 'IN' };
   function loadFantasy() {
     var u = mktURL(); if (!u || document.hidden) return Promise.resolve();
@@ -658,13 +662,15 @@
   }
   function renderFantasyChips() {
     $('fchips').innerHTML = FAN_CHIPS.map(function (c) {
-      return '<button class="chip" type="button" data-f="' + c[0] + '" aria-pressed="' + (fanFilter === c[0]) + '">' + esc(c[1]) + '</button>';
+      var on = c[0] === 'trend' ? fanTrend : fanTrend ? false : c[0] === 'all' ? !Object.keys(fanHidden).length : !fanHidden[c[0]];
+      var off = c[0] !== 'trend' && c[0] !== 'all' && !fanTrend && fanHidden[c[0]];
+      return '<button class="chip' + (off ? ' off' : '') + '" type="button" data-f="' + c[0] + '" aria-pressed="' + on + '">' + esc(c[1]) + '</button>';
     }).join('');
   }
   function renderFantasy() {
     if (!FAN) { $('fan').innerHTML = '<p class="empty">Loading…</p>'; return; }
     var head = '<div class="nmeta">Updated ' + esc(FAN.updated.slice(11)) + ' Singapore · tap to open</div>';
-    if (fanFilter === 'trend') {
+    if (fanTrend) {
       $('fan').innerHTML = head + '<div class="trend">' + ['NBA', 'NFL'].map(function (sp) {
         var list = (FAN.trending || {})[sp] || [];
         return '<h3>' + (sp === 'NBA' ? '🏀' : '🏈') + ' ' + sp + ' · MOST ADDED ON SLEEPER, LAST 24H</h3>' + (list.length ? list.map(function (p, n) {
@@ -676,8 +682,8 @@
     }
     var q = $('q').value.trim().toLowerCase();
     var list = FAN.items.filter(function (x) {
-      if (fanFilter === 'alert' && x.kind !== 'alert') return false;
-      if ((fanFilter === 'NBA' || fanFilter === 'NFL') && x.sport !== fanFilter) return false;
+      if (fanHidden[x.sport]) return false;                              // sport switched off
+      if (fanHidden[x.kind === 'alert' ? 'alert' : 'news']) return false;   // alerts or headlines switched off
       return !q || (x.title + ' ' + (x.blurb || '')).toLowerCase().indexOf(q) >= 0;
     });
     var html = head, lastDay = '';
@@ -698,7 +704,13 @@
   }
   $('fchips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-f]'); if (!b) return;
-    fanFilter = b.getAttribute('data-f'); renderFantasyChips(); renderFantasy(); SC().scrollTop = 0;
+    var k = b.getAttribute('data-f');
+    if (k === 'trend') fanTrend = !fanTrend;
+    else if (fanTrend) fanTrend = false;                                       // leaving Most added returns to your filter
+    else if (k === 'all') { if (Object.keys(fanHidden).length) fanHidden = {}; else FAN_CATS.forEach(function (c) { fanHidden[c] = 1; }); }
+    else if (fanHidden[k]) delete fanHidden[k]; else fanHidden[k] = 1;
+    prefs('fanHidden', Object.keys(fanHidden).join(','));
+    renderFantasyChips(); renderFantasy(); SC().scrollTop = 0;
   });
 
   // =====================================================================
@@ -1489,7 +1501,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b3a6f4d46a8c</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b88e0851af93</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
