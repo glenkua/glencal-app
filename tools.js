@@ -181,7 +181,7 @@ var Tools = (function () {
 
   // ---------- RATES ----------
   var FREQ = [['1', 'Annual'], ['2', 'Semi-annual'], ['4', 'Quarterly'], ['12', 'Monthly'], ['365', 'Daily'], ['c', 'Continuous']];
-  var rt = { rate: '4.00', from: '2', notional: '10m', dur: '4.5', move: '10', cpn: '4.25', yrs: '10', bfreq: '2', yld: '4.40', px: '' };
+  var rt = { rate: '4.00', from: '2', tenor: '5', tunit: 'y', amt: '1m', notional: '10m', dur: '4.5', move: '10', cpn: '4.25', yrs: '10', bfreq: '2', yld: '4.40', px: '' };
   function toCont(r, f) { return f === 'c' ? r : +f * Math.log(1 + r / +f); }
   function fromCont(rc, f) { return f === 'c' ? rc : +f * (Math.exp(rc / +f) - 1); }
   function bond(cpn, yrs, fq, y) {   // price per 100 and modified duration, on a coupon date
@@ -196,6 +196,19 @@ var Tools = (function () {
     return '<h3 class="th">COMPOUNDING</h3><div class="f"><div class="two"><label>Rate %<input id="rt-rate" inputmode="decimal" value="' + esc(rt.rate) + '"></label>' +
       '<label>Compounded<select id="rt-from">' + FREQ.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === rt.from ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label></div></div>' +
       '<table class="mt">' + FREQ.map(function (x) { return '<tr><td>' + x[1] + '</td><td>' + (isFinite(rc) ? fmt(fromCont(rc, x[0]) * 100, 4) + '%' : '—') + '</td></tr>'; }).join('') + '</table>' +
+      '<div class="f"><div class="two"><label>Tenor<span class="solve"><input id="rt-tenor" inputmode="decimal" value="' + esc(rt.tenor) + '"><select id="rt-tunit" style="max-width:6.5rem">' +
+        [['d', 'days'], ['m', 'months'], ['y', 'years']].map(function (u) { return '<option value="' + u[0] + '"' + (u[0] === rt.tunit ? ' selected' : '') + '>' + u[1] + '</option>'; }).join('') + '</select></span></label>' +
+      '<label>Amount (optional)<input id="rt-amt" inputmode="decimal" value="' + esc(rt.amt) + '"></label></div></div>' +
+      (function () {
+        var T = parseNum(rt.tenor) / (rt.tunit === 'd' ? 365 : rt.tunit === 'm' ? 12 : 1), A = parseNum(rt.amt);
+        if (!(T > 0) || !isFinite(rc)) return '';
+        var tot = Math.exp(rc * T) - 1, simple = r * T;
+        return '<table class="mt"><tr><td>Total compounded over ' + esc(rt.tenor) + ' ' + ({ d: 'days', m: 'months', y: 'years' })[rt.tunit] + '</td><td>' + fmt(tot * 100, 4) + '%</td></tr>' +
+          '<tr><td>Simple interest, same tenor</td><td>' + fmt(simple * 100, 4) + '%</td></tr>' +
+          '<tr><td>Compounding effect</td><td>' + fmt((tot - simple) * 100, 4) + '%</td></tr>' +
+          (isFinite(A) && A ? '<tr><td>' + fmt(A, 0) + ' grows to</td><td>' + fmt(A * (1 + tot), 2) + '</td></tr><tr><td>Interest earned</td><td>' + fmt(A * tot, 2) + '</td></tr>' : '') + '</table>';
+      })() +
+      '<p class="small">Days use a 365-day year. Every rate in the table above gives the same total over the tenor.</p>' +
       '<h3 class="th">DV01 / BASIS-POINT VALUE</h3><div class="f"><div class="two"><label>Notional<input id="rt-notional" inputmode="decimal" value="' + esc(rt.notional) + '"></label>' +
       '<label>Modified duration<input id="rt-dur" inputmode="decimal" value="' + esc(rt.dur) + '"></label></div>' +
       '<label>Move (bp)<input id="rt-move" inputmode="decimal" value="' + esc(rt.move) + '"></label></div>' +
@@ -341,6 +354,6 @@ var Tools = (function () {
     setTape: function (list) { tape = (list || []).filter(function (t) { return t && isFinite(t.r); }).slice(0, TAPE_MAX); ans = tape.length ? tape[0].r : 0; },
     select: function (t) { tool = t; draw(); },
     draw: draw,
-    _test: { pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
+    _test: { rt: rt, ratesHTML: ratesHTML, pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
   };
 })();
