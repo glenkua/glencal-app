@@ -430,7 +430,7 @@ var Tools = (function () {
   }
 
   // ---------- shell ----------
-  var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg'], ['loan', 'Interest'], ['sgtax', 'SG Tax'], ['pace', 'Pace']];
+  var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg'], ['loan', 'Interest'], ['sgtax', 'Tax'], ['pace', 'Pace']];
   function chipsHTML() {
     return TOOLS.map(function (t) { return '<button class="chip" type="button" data-tool="' + t[0] + '" aria-pressed="' + (tool === t[0]) + '">' + t[1] + '</button>'; }).join('');
   }

@@ -175,7 +175,8 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .tape .tl { all: unset; box-sizing: border-box; display: flex; justify-content: space-between; gap: 0.6rem; width: 100%; padding: 0.35rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .te { color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
 .tr2 { color: var(--fg); white-space: nowrap; }
-.solve { display: flex; gap: 0.4rem; } .solve input { flex: 1; min-width: 0; }
+.solve { display: flex; gap: 0.4rem; } .solve input { flex: 1 1 auto; min-width: 3.5rem; }
+.f .solve select { width: auto; flex: 0 0 auto; max-width: 7.5rem; }
 .th { margin: 0.6rem 0 0.1rem; font-size: 0.8rem; letter-spacing: 0.12em; color: var(--amber); }
 .fxt td:nth-child(2) { font-weight: 700; }
 .presets { display: flex; flex-wrap: wrap; gap: 0.3rem; }
