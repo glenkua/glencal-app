@@ -280,27 +280,35 @@
   // =====================================================================
   // News: headlines collected by a GitHub job every ~10 min (same branch as the ticker)
   // =====================================================================
-  var tab = 'cal', NEWS = null, newsCcy = 'all';
+  var tab = 'cal', NEWS = null;
+  var newsHidden = {};
+  (prefs('newsHidden') || '').split(',').forEach(function (k) { if (k) newsHidden[k] = 1; });
+  function newsTags(n) {
+    var t = [];
+    if (n.cb) t.push('cb');
+    if (n.sg) t.push('sg');
+    (n.ccy || []).forEach(function (c) { if (t.indexOf(c) < 0) t.push(c); });
+    return t.length ? t : ['other'];
+  }
   var lastSeen = prefs('newsSeen') || '';
   function newsURL() { var u = mktURL(); return u ? u.replace('/markets.json', '/news.json') : null; }
   function loadNews() {
-    var url = newsURL(); if (!url || document.hidden) return;
-    fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+    var url = newsURL(); if (!url || document.hidden) return Promise.resolve();
+    return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { if (d && d.items) { NEWS = d; if (tab === 'news') renderNews(); } }).catch(function () {});
   }
-  var NEWS_CHIPS = [['all', 'All'], ['cb', '★ Central banks'], ['sg', '🇸🇬 SG'], ['USD', 'USD'], ['EUR', 'EUR'], ['JPY', 'JPY'], ['GBP', 'GBP'], ['AUD', 'AUD'], ['NZD', 'NZD'], ['SGD', 'SGD']];
+  var NEWS_CHIPS = [['all', 'All'], ['cb', '★ Central banks'], ['sg', '🇸🇬 SG'], ['other', 'General'], ['USD', 'USD'], ['EUR', 'EUR'], ['JPY', 'JPY'], ['GBP', 'GBP'], ['AUD', 'AUD'], ['NZD', 'NZD'], ['SGD', 'SGD']];
   function renderNewsChips() {
     $('nchips').innerHTML = NEWS_CHIPS.map(function (c) {
-      return '<button class="chip" type="button" data-n="' + c[0] + '" aria-pressed="' + (newsCcy === c[0]) + '">' + esc(c[1]) + '</button>';
+      var on = c[0] === 'all' ? !Object.keys(newsHidden).length : !newsHidden[c[0]];
+      return '<button class="chip' + (on ? '' : ' off') + '" type="button" data-n="' + c[0] + '" aria-pressed="' + on + '">' + esc(c[1]) + '</button>';
     }).join('');
   }
   function renderNews() {
     if (!NEWS) { $('news').innerHTML = '<p class="empty">Loading headlines…</p>'; return; }
     var q = $('q').value.trim().toLowerCase();
     var list = NEWS.items.filter(function (n) {
-      if (newsCcy === 'cb' && !n.cb) return false;
-      if (newsCcy === 'sg' && !n.sg) return false;
-      if (newsCcy !== 'all' && newsCcy !== 'cb' && newsCcy !== 'sg' && (n.ccy || []).indexOf(newsCcy) < 0) return false;
+      if (!newsTags(n).some(function (t) { return !newsHidden[t]; })) return false;   // shown if any of its tags is switched on
       return !q || (n.title + ' ' + n.src).toLowerCase().indexOf(q) >= 0;
     });
     var html = '<div class="nmeta">Updated ' + esc(NEWS.updated.slice(11)) + ' Singapore · ' + list.length + ' headlines · tap to open</div>', lastDay = '';
@@ -329,9 +337,9 @@
     $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('openx').hidden = cal;
     $('ask').hidden = !cal; $('jump').hidden = !cal; $('add').hidden = !cal;
     $('q').value = '';
-    if (news) { renderNewsChips(); renderNews(); loadNews(); window.scrollTo({ top: 0 }); }
-    else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); window.scrollTo({ top: 0 }); }
-    else { render(); jumpToday(false); }
+    if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
+    else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); SC().scrollTop = 0; }
+    else { showPast = false; render(); jumpToday(false); }
     syncHead();
   }
   $('tab-cal').addEventListener('click', function () { setTab('cal'); });
@@ -339,7 +347,13 @@
   $('tab-fan').addEventListener('click', function () { setTab('fan'); });
   $('nchips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-n]'); if (!b) return;
-    newsCcy = b.getAttribute('data-n'); renderNewsChips(); renderNews(); window.scrollTo({ top: 0 });
+    var k = b.getAttribute('data-n');
+    if (k === 'all') {
+      if (Object.keys(newsHidden).length) newsHidden = {};
+      else NEWS_CHIPS.forEach(function (c) { if (c[0] !== 'all') newsHidden[c[0]] = 1; });
+    } else if (newsHidden[k]) delete newsHidden[k]; else newsHidden[k] = 1;
+    prefs('newsHidden', Object.keys(newsHidden).join(','));
+    renderNewsChips(); renderNews(); SC().scrollTop = 0;
   });
   setInterval(function () { if (tab === 'news') loadNews(); if (tab === 'fan') loadFantasy(); }, 2 * 60000);
 
@@ -348,8 +362,8 @@
   var FAN_CHIPS = [['all', 'All'], ['alert', '🚨 Alerts'], ['NBA', '🏀 NBA'], ['NFL', '🏈 NFL'], ['trend', '📈 Most added']];
   var ST_LABEL = { out: 'OUT', doubt: 'Q', in: 'IN' };
   function loadFantasy() {
-    var u = mktURL(); if (!u || document.hidden) return;
-    fetch(u.replace('/markets.json', '/fantasy.json'), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+    var u = mktURL(); if (!u || document.hidden) return Promise.resolve();
+    return fetch(u.replace('/markets.json', '/fantasy.json'), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { if (d && d.items) { FAN = d; if (tab === 'fan') renderFantasy(); } }).catch(function () {});
   }
   function renderFantasyChips() {
@@ -394,7 +408,7 @@
   }
   $('fchips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-f]'); if (!b) return;
-    fanFilter = b.getAttribute('data-f'); renderFantasyChips(); renderFantasy(); window.scrollTo({ top: 0 });
+    fanFilter = b.getAttribute('data-f'); renderFantasyChips(); renderFantasy(); SC().scrollTop = 0;
   });
 
   // =====================================================================
@@ -602,6 +616,8 @@
     var dates = Object.keys(byDate);
     if (dates.length && !q && !byDate[todayISO]) dates.push(todayISO);
     dates.sort();
+    var pastCount = dates.filter(function (d) { return d < todayISO; }).length;
+    if (!showPast && !q) dates = dates.filter(function (d) { return d >= todayISO; });
     shownDates = dates;
     if (!dates.length) {
       $('list').innerHTML = (!q && !econMode && Object.keys(hiddenCats).length && !visible().length && allEntries().length) ? '<p class="empty">All categories are switched off. Tap a category to show it, or ALL for everything.</p>'
@@ -637,10 +653,52 @@
       });
       html += '<section class="mon"><h2 class="mbar" data-m="' + mk + '"><span>' + MONTH_FULL[md.getMonth()] + ' ' + md.getFullYear() + '</span><span class="n">' + count + '</span></h2>' + body + '</section>';
     });
+    if (!showPast && !q && pastCount) html = '<div class="pasthint">↓ PULL DOWN FOR ' + pastCount + ' PAST DAY' + (pastCount === 1 ? '' : 'S') + '</div>' + html;
     $('list').innerHTML = html;
     syncHead();
   }
   var digestTimer = null;
+  // ---- pull down at the top: calendar shows past days; news and fantasy refresh ----
+  function SC() { return $('scroll'); }
+  var showPast = false, PULL_AT = 70, pull = { y0: null, d: 0, on: false, busy: false };
+  function pullText(d) {
+    if (tab === 'cal') return showPast ? '' : d >= PULL_AT ? 'Release to show past events' : '↓ Pull to show past events';
+    return pull.busy ? 'Refreshing…' : d >= PULL_AT ? 'Release to refresh' : '↓ Pull to refresh';
+  }
+  function setPull(d, anim) {
+    var pw = $('pw');
+    pw.style.transition = anim ? 'transform 200ms ease' : 'none';
+    pw.style.transform = d ? 'translateY(' + d + 'px)' : '';
+    $('pull').textContent = d ? pullText(d) : '';
+    $('pull').classList.toggle('ready', d >= PULL_AT);
+  }
+  SC().addEventListener('touchstart', function (e) {
+    pull.y0 = (SC().scrollTop <= 0 && e.touches.length === 1 && !pull.busy) ? e.touches[0].clientY : null; pull.d = 0;
+  }, { passive: true });
+  SC().addEventListener('touchmove', function (e) {
+    if (pull.y0 === null) return;
+    var dy = e.touches[0].clientY - pull.y0;
+    if (dy <= 0 || SC().scrollTop > 0) { if (pull.on) setPull(0); pull.on = false; return; }
+    if (tab === 'cal' && showPast) return;
+    pull.on = true; e.preventDefault();
+    pull.d = Math.min(130, dy * 0.45); setPull(pull.d);
+  }, { passive: false });
+  SC().addEventListener('touchend', function () {
+    if (!pull.on) { pull.y0 = null; return; }
+    var go = pull.d >= PULL_AT; pull.on = false; pull.y0 = null;
+    if (!go) { setPull(0, true); return; }
+    if (tab === 'cal') {
+      showPast = true; setPull(0, true); render();
+      var t = $('d-' + todayISO) || document.querySelector('#list .dgrp, #list .nowline');
+      if (t) scrollToEl(t, false);
+      setTimeout(function () { SC().scrollBy({ top: -120, behavior: 'smooth' }); }, 60);   // reveal the last few past days
+      return;
+    }
+    pull.busy = true; setPull(48, true);
+    (tab === 'news' ? loadNews() : loadFantasy()).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
+  });
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); });   // no pinch zoom
+
   function refresh() { renderChips(); syncHead(); render(); clearTimeout(digestTimer); digestTimer = setTimeout(writeDigest, 1500); }
   function writeDigest() {
     if (!unlocked) return;
@@ -680,8 +738,8 @@
   }
   function scrollToEl(el, smooth) {
     if (!el) return;
-    var y = el.getBoundingClientRect().top + window.pageYOffset - $('bar').getBoundingClientRect().bottom - mbarH;
-    window.scrollTo({ top: Math.max(0, y), behavior: smooth ? 'smooth' : 'auto' });
+    var y = el.getBoundingClientRect().top - SC().getBoundingClientRect().top + SC().scrollTop - mbarH;
+    SC().scrollTo({ top: Math.max(0, y), behavior: smooth ? 'smooth' : 'auto' });
   }
   function jumpToday(smooth) {
     var el = $('d-' + todayISO);
@@ -769,6 +827,7 @@
     if (!out.length) { closeSheet(); return; }
     items = items.concat(out); persist();
     closeSheet(); econMode = false; refresh();
+    if (out[0].date < todayISO && !showPast) { showPast = true; render(); }
     scrollToEl($('d-' + out[0].date), true);
   }
 
@@ -899,10 +958,10 @@
     id = String(id).split('@')[0];
     var it = items.filter(function (i) { return i.id === id; })[0];
     if (!it) return;
-    var y = window.pageYOffset;
+    var y = SC().scrollTop;
     items = items.filter(function (i) { return i.id !== id; }); persist();
     lastDeleted = it;
-    refresh(); window.scrollTo({ top: y });
+    refresh(); SC().scrollTop = y;
     $('toastMsg').textContent = 'Deleted: ' + it.title;
     $('toast').hidden = false;
     clearTimeout(toastTimer);
@@ -910,10 +969,10 @@
   }
   $('undo').addEventListener('click', function () {
     if (!lastDeleted) return;
-    var y = window.pageYOffset;
+    var y = SC().scrollTop;
     items.push(lastDeleted); persist();
     lastDeleted = null; $('toast').hidden = true; clearTimeout(toastTimer);
-    refresh(); window.scrollTo({ top: y });
+    refresh(); SC().scrollTop = y;
   });
 
   // ---------- swipe left to show Delete ----------
@@ -1133,7 +1192,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 1b6abea047b6</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 35cb6531d995</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1280,7 +1339,7 @@
     else if (act === 'lock-off') { prefs('lock', 'off'); Vault.rekey('device').then(showMenu, function (e) { notice('Could not turn off the lock: ' + e.message); }); }
     else if (act === 'lock-on') { closeSheet(); prefs('lock', 'on'); showLockOn(); }
     else if (act === 'update') installUpdate();
-    else if (act === 'jump') { var day = b.getAttribute('data-day'); closeSheet(); scrollToEl($('d-' + day), true); }
+    else if (act === 'jump') { var day = b.getAttribute('data-day'); closeSheet(); if (day < todayISO && !showPast) { showPast = true; render(); } scrollToEl($('d-' + day), true); }
     else if (act === 'jump-today') { closeSheet(); $('q').value = ''; render(); jumpToday(true); }
   });
   window.addEventListener('resize', function () { if (unlocked) syncHead(); });
