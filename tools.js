@@ -224,11 +224,6 @@ var Tools = (function () {
       ['In bp (if these are rates in %)', fmt(d * 100, 2) + 'bp'],
       ['In pips (FX)', fmt(d * (pc.jpy ? 100 : 10000), 1) + ' pips']];
     if (isFinite(yrs) && yrs > 0) rows.push(['Annualised (CAGR) over ' + esc(pc.yrs) + 'y', fmt((Math.pow(b / a, 1 / yrs) - 1) * 100, 4) + '%']);
-    // same move seen from the other currency's side (e.g. USDSGD -> SGDUSD)
-    var ia = 1 / a, ib = 1 / b, id = ib - ia;
-    rows.push(['<b>Other way round (1/x)</b>', fmt(ia, 6) + ' → ' + fmt(ib, 6)]);
-    rows.push(['% change, other way', fmt(id / ia * 100, 4) + '%']);
-    if (!pc.jpy) rows.push(['Pips, other way', fmt(id * 10000, 1) + ' pips']);
     return '<div class="f"><div class="two"><label>From<input id="pc-a" inputmode="decimal" value="' + esc(pc.a) + '"></label>' +
       '<label>To<input id="pc-b" inputmode="decimal" value="' + esc(pc.b) + '"></label></div>' +
       '<div class="two"><label>Years (for CAGR, optional)<input id="pc-yrs" inputmode="decimal" value="' + esc(pc.yrs) + '"></label>' +
@@ -236,8 +231,65 @@ var Tools = (function () {
       '<table class="mt">' + rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + (isFinite(a) && isFinite(b) ? r[1] : '—') + '</td></tr>'; }).join('') + '</table>';
   }
 
+  // ---------- PACE (running) ----------
+  var MI = 1.609344;
+  var pace = { unit: 'km', dist: '2.4', time: '', pace: '3:00', speed: '', src: 'pace' };
+  function toSec(v) {   // "h:mm:ss", "mm:ss" or plain minutes ("7.5")
+    v = String(v || '').trim(); if (!v) return NaN;
+    if (v.indexOf(':') < 0) return parseFloat(v) * 60;
+    var p = v.split(':').map(Number), sec = 0;
+    if (p.some(isNaN)) return NaN;
+    p.forEach(function (x) { sec = sec * 60 + x; });
+    return sec;
+  }
+  function hms(sec, withH) {
+    if (!isFinite(sec) || sec < 0) return '';
+    sec = Math.round(sec);
+    var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), x = sec % 60;
+    return (h || withH ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(x).padStart(2, '0');
+  }
+  function paceSec() {   // seconds per unit, from pace or speed (whichever was typed last)
+    if (pace.src === 'speed') { var sp = parseFloat(pace.speed); return sp > 0 ? 3600 / sp : NaN; }
+    return toSec(pace.pace);
+  }
+  function paceSolve(which) {
+    var d = parseFloat(pace.dist), t = toSec(pace.time), ps = paceSec();
+    if (which === 'time') { if (!(d > 0 && ps > 0)) return flash('Enter distance and pace (or speed).'); pace.time = hms(d * ps, d * ps >= 3600); }
+    else if (which === 'dist') { if (!(t > 0 && ps > 0)) return flash('Enter time and pace (or speed).'); pace.dist = String(+(t / ps).toFixed(3)); }
+    else { if (!(d > 0 && t > 0)) return flash('Enter distance and time.'); ps = t / d; }
+    pace.pace = hms(ps); pace.speed = String(+(3600 / ps).toFixed(2)); pace.src = 'pace';
+    draw();
+  }
+  function setUnit(u) {   // convert what's there when switching km <-> miles
+    if (u === pace.unit) return;
+    var f = u === 'mi' ? 1 / MI : MI, d = parseFloat(pace.dist), ps = paceSec();
+    if (d > 0) pace.dist = String(+(d * f).toFixed(3));
+    if (ps > 0) { ps = ps / f; pace.pace = hms(ps); pace.speed = String(+(3600 / ps).toFixed(2)); pace.src = 'pace'; }
+    pace.unit = u; draw();
+  }
+  function paceHTML() {
+    var U = pace.unit, other = U === 'km' ? 'mi' : 'km', f = U === 'km' ? 1 / MI : MI;
+    var d = parseFloat(pace.dist), t = toSec(pace.time), ps = paceSec();
+    var PRESETS = [['2.4 km', 2.4], ['5K', 5], ['10K', 10], ['Half', 21.0975], ['Full', 42.195]];
+    var rows = [];
+    if (d > 0) rows.push(['Distance', fmt(d, 3) + ' ' + U + '  ·  ' + fmt(d * f, 3) + ' ' + other]);
+    if (t > 0) rows.push(['Time', hms(t, t >= 3600)]);
+    if (ps > 0) {
+      rows.push(['Pace', hms(ps) + ' /' + U + '  ·  ' + hms(U === 'km' ? ps * MI : ps / MI) + ' /' + other]);
+      rows.push(['Speed', fmt(3600 / ps, 2) + (U === 'km' ? ' km/h' : ' mph') + '  ·  ' + fmt(U === 'km' ? 3600 / ps / MI : 3600 / ps * MI, 2) + (U === 'km' ? ' mph' : ' km/h')]);
+    }
+    return '<div class="f"><label>Units<select id="pc2-unit"><option value="km"' + (U === 'km' ? ' selected' : '') + '>Metric (km)</option><option value="mi"' + (U === 'mi' ? ' selected' : '') + '>Imperial (miles)</option></select></label>' +
+      '<div class="presets">' + PRESETS.map(function (x) { return '<button type="button" class="chip" data-preset="' + x[1] + '">' + x[0] + '</button>'; }).join('') + '</div>' +
+      '<label>Distance (' + U + ')<span class="solve"><input id="pc2-dist" inputmode="decimal" value="' + esc(pace.dist) + '"><button type="button" class="btn" data-pace="dist">Solve</button></span></label>' +
+      '<label>Time (h:mm:ss or mm:ss)<span class="solve"><input id="pc2-time" inputmode="numbers-and-punctuation" value="' + esc(pace.time) + '" placeholder="e.g. 7:12 or 1:45:00"><button type="button" class="btn" data-pace="time">Solve</button></span></label>' +
+      '<label>Pace (min:sec per ' + U + ')<span class="solve"><input id="pc2-pace" inputmode="numbers-and-punctuation" value="' + esc(pace.pace) + '" placeholder="e.g. 4:30"><button type="button" class="btn" data-pace="pace">Solve</button></span></label>' +
+      '<label>or Speed (' + (U === 'km' ? 'km/h' : 'mph') + ')<input id="pc2-speed" inputmode="decimal" value="' + esc(pace.speed) + '" placeholder="e.g. 12"></label></div>' +
+      (rows.length ? '<table class="mt">' + rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + esc(r[1]) + '</td></tr>'; }).join('') + '</table>' : '') +
+      '<p class="small">Fill in any two of distance, time and pace (or speed), then tap Solve on the one you want. Pace and speed are the same thing in different units; whichever you typed last is used.</p>';
+  }
+
   // ---------- shell ----------
-  var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg']];
+  var TOOLS = [['calc', 'Calc'], ['fx', 'FX'], ['tvm', 'TVM'], ['rates', 'Rates'], ['pct', '% Chg'], ['pace', 'Pace']];
   function chipsHTML() {
     return TOOLS.map(function (t) { return '<button class="chip" type="button" data-tool="' + t[0] + '" aria-pressed="' + (tool === t[0]) + '">' + t[1] + '</button>'; }).join('');
   }
@@ -245,7 +297,7 @@ var Tools = (function () {
     if (!root) return;
     var focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : null;
     var pos = focused && document.activeElement.selectionStart;
-    root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div></div>';
+    root.innerHTML = '<div class="toolsbox">' + (tool === 'calc' ? calcHTML() : tool === 'fx' ? fxHTML() : tool === 'tvm' ? tvmHTML() : tool === 'rates' ? ratesHTML() : tool === 'pace' ? paceHTML() : pcHTML()) + '<div id="tmsg" class="err" hidden></div></div>';
     var ch = document.getElementById('chist'); if (ch) ch.scrollTop = ch.scrollHeight;
     if (focused && document.getElementById(focused)) {   // keep typing position while results update
       var el = document.getElementById(focused); el.focus();
@@ -259,6 +311,8 @@ var Tools = (function () {
     if (id === 'fx-amt') fxAmt = v; else if (id === 'fx-from') fxFrom = v;
     else if (id.indexOf('tvm-') === 0) { var k = id.slice(4); if (k === 'BG') tvm.BEGIN = v === '1'; else tvm[k] = v; return; }   // TVM recalculates on Solve only
     else if (id.indexOf('rt-') === 0) rt[id.slice(3)] = v;
+    else if (id === 'pc2-unit') return setUnit(v);
+    else if (id.indexOf('pc2-') === 0) { var pk = id.slice(4); pace[pk] = v; if (pk === 'pace' || pk === 'speed') pace.src = pk; return; }   // recalculated on Solve
     else if (id === 'pc-jpy') pc.jpy = v === '1';
     else if (id.indexOf('pc-') === 0) pc[id.slice(3)] = v;
     else return;
@@ -268,6 +322,8 @@ var Tools = (function () {
     var b = e.target.closest('button'); if (!b) return;
     if (b.dataset.k) return press(b.dataset.k);
     if (b.dataset.solve) return tvmSolve(b.dataset.solve);
+    if (b.dataset.pace) return paceSolve(b.dataset.pace);
+    if (b.dataset.preset) { var km = +b.dataset.preset; pace.dist = String(+(pace.unit === 'km' ? km : km / MI).toFixed(3)); draw(); return; }
     if (b.dataset.tape) { var t = tape[+b.dataset.tape]; if (t) { expr += String(+t.r.toPrecision(12)); draw(); } return; }
     if (b.dataset.copy) { if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.copy.replace(/,/g, '')).catch(function () {}); return; }
     if (b.dataset.act2 === 'tape-clear') { tape = []; draw(); return; }
@@ -283,6 +339,6 @@ var Tools = (function () {
     chips: chipsHTML,
     select: function (t) { tool = t; draw(); },
     draw: draw,
-    _test: { evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
+    _test: { pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
   };
 })();
