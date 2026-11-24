@@ -31,9 +31,9 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
-  var rules = [], paid = {};
+  var rules = [], paid = {}, calcTape = [];
   function persist() {
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid) };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30) };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -148,6 +148,8 @@
     items = data.items || [];
     rules = data.rules || [];
     paid = data.paid || {};
+    calcTape = data.calc || [];
+    Tools.setTape(calcTape);
     unlocked = true;
     todayISO = GC.iso(new Date());
     $('lock').hidden = true;
@@ -164,6 +166,7 @@
     closeSheet();
     $('list').innerHTML = '';
     askHistory = []; pending = null;
+    calcTape = []; Tools.setTape([]);
     showUnlock();
   }
 
@@ -349,7 +352,8 @@
   $('tab-news').addEventListener('click', function () { setTab('news'); });
   $('tab-fan').addEventListener('click', function () { setTab('fan'); });
   $('tab-tools').addEventListener('click', function () { setTab('tools'); });
-  Tools.init($('tools'), function () { return MKT; });
+  var tapeTimer = null;
+  Tools.init($('tools'), function () { return MKT; }, function (t) { calcTape = t; clearTimeout(tapeTimer); tapeTimer = setTimeout(persist, 800); });
   $('tchips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-tool]'); if (!b) return;
     Tools.select(b.getAttribute('data-tool')); $('tchips').innerHTML = Tools.chips(); SC().scrollTop = 0;
@@ -1201,7 +1205,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 73e3adc36587</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 811090551789</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {

@@ -1,7 +1,8 @@
 // GlenCal TOOLS: calculator with tape, FX converter, TVM, rates, % change. Works offline; nothing is stored or sent.
 var Tools = (function () {
   'use strict';
-  var root = null, tool = 'calc', getMkt = function () { return null; };
+  var root = null, tool = 'calc', getMkt = function () { return null; }, onTape = function () {};
+  var TAPE_MAX = 30;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   // ---------- numbers ----------
@@ -100,7 +101,7 @@ var Tools = (function () {
     else if (k === 'ANS') expr += 'ans';
     else if (k === '=') {
       if (!expr) return;
-      try { var r = evaluate(expr, ans); tape.unshift({ e: expr.replace(/ans/g, fmt(ans)), r: r }); tape = tape.slice(0, 50); ans = r; expr = String(+r.toPrecision(12)); }
+      try { var r = evaluate(expr, ans); tape.unshift({ e: expr.replace(/ans/g, fmt(ans)), r: r }); tape = tape.slice(0, TAPE_MAX); ans = r; onTape(tape.slice()); expr = String(+r.toPrecision(12)); }
       catch (e) { flash('Check the expression'); return; }
     } else {
       // start fresh after a result if a digit is typed
@@ -326,17 +327,18 @@ var Tools = (function () {
     if (b.dataset.preset) { var km = +b.dataset.preset; pace.dist = String(+(pace.unit === 'km' ? km : km / MI).toFixed(3)); draw(); return; }
     if (b.dataset.tape) { var t = tape[+b.dataset.tape]; if (t) { expr += String(+t.r.toPrecision(12)); draw(); } return; }
     if (b.dataset.copy) { if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.copy.replace(/,/g, '')).catch(function () {}); return; }
-    if (b.dataset.act2 === 'tape-clear') { tape = []; draw(); return; }
+    if (b.dataset.act2 === 'tape-clear') { tape = []; onTape([]); draw(); return; }
     if (b.dataset.act2 === 'px2y') return priceToYield();
   }
   return {
-    init: function (el, mktGetter) {
-      root = el; getMkt = mktGetter;
+    init: function (el, mktGetter, tapeSaver) {
+      root = el; getMkt = mktGetter; if (tapeSaver) onTape = tapeSaver;
       root.addEventListener('click', onClick);
       root.addEventListener('input', onInput);
       root.addEventListener('change', onInput);
     },
     chips: chipsHTML,
+    setTape: function (list) { tape = (list || []).filter(function (t) { return t && isFinite(t.r); }).slice(0, TAPE_MAX); ans = tape.length ? tape[0].r : 0; },
     select: function (t) { tool = t; draw(); },
     draw: draw,
     _test: { pace: pace, paceSolve: paceSolve, setUnit: setUnit, toSec: toSec, hms: hms, evaluate: evaluate, parseNum: parseNum, tvmSolve: tvmSolve, tvm: tvm, bond: bond, toCont: toCont, fromCont: fromCont }
