@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-23 23:32",
+ "updated": "2026-11-24 08:01",
  "items": [
   {
    "date": "2026-11-25",
@@ -17,7 +17,7 @@
    "ccy": "AUD",
    "title": "CPI y/y",
    "kind": "data",
-   "forecast": "4.8%",
+   "forecast": "4.7%",
    "previous": "4.3%",
    "id": "live-2026-11-25-AUD-cpiyy"
   },
