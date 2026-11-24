@@ -371,7 +371,9 @@
     var econ = financeItems().filter(function (e) { var k = e.date + ' ' + (e.time || '12:00'); return k >= lo && k <= hi; })
       .sort(function (a, b) { return (a.date + (a.time || '12:00')) < (b.date + (b.time || '12:00')) ? -1 : 1; });
     html += '<section class="bsec"><h2 class="mbar"><span>ECON · NEXT 24H</span><span class="n">' + econ.length + '</span></h2>' +
-      (econ.length ? briefRows(econ, true) : '<p class="bnone">No tier-1 releases in the next 24 hours.</p>') + '</section>';
+      (econ.length ? (econ.length > 3
+        ? '<div class="bscroll" id="becon">' + briefRows(econ, true) + '</div><div class="bmore">↓ scroll for ' + (econ.length - 3) + ' more</div>'
+        : briefRows(econ, true)) : '<p class="bnone">No tier-1 releases in the next 24 hours.</p>') + '</section>';
 
     // markets
     var tk = MKT && MKT.items ? MKT.items.filter(function (q) { return q.tk !== false; }) : [];
@@ -1477,7 +1479,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 5f8647e9d464</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b465d1f3e737</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
