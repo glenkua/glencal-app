@@ -962,8 +962,18 @@
     $('pull').textContent = d ? pullText(d) : '';
     $('pull').classList.toggle('ready', d >= PULL_AT);
   }
+  // true if the finger is on a scrollable box inside the page (e.g. ECON in the brief) that can still scroll up
+  function innerCanScrollUp(el) {
+    for (; el && el !== SC(); el = el.parentNode) {
+      if (el.nodeType !== 1) continue;
+      var oy = getComputedStyle(el).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1 && el.scrollTop > 0) return true;
+    }
+    return false;
+  }
   SC().addEventListener('touchstart', function (e) {
-    pull.y0 = (SC().scrollTop <= 0 && e.touches.length === 1 && !pull.busy) ? e.touches[0].clientY : null; pull.d = 0;
+    var ok = SC().scrollTop <= 0 && e.touches.length === 1 && !pull.busy && !innerCanScrollUp(e.target);
+    pull.y0 = ok ? e.touches[0].clientY : null; pull.d = 0;
   }, { passive: true });
   SC().addEventListener('touchmove', function (e) {
     if (pull.y0 === null) return;
@@ -1479,7 +1489,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b465d1f3e737</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version a4f40b786d74</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
