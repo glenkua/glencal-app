@@ -243,19 +243,21 @@
     var TK = MKT.items.filter(function (q) { return q.tk !== false; });
     var key = TK.map(function (q) { return q.k; }).join(',');
     if (key !== mktKey) {   // build once; later refreshes update numbers in place so the scroll doesn't restart
-      $('tktrack').innerHTML = TK.map(function (q) {
+      var set = TK.map(function (q) {
         return '<span class="tq" data-k="' + esc(q.k) + '"><b>' + esc(q.k) + '</b><span class="v"></span><span class="fl"></span></span>';
-      }).join('');
+      }).join('') + '<span class="tksep" aria-hidden="true">◆</span>';
+      $('tktrack').innerHTML = '<span class="tk-set">' + set + '</span><span class="tk-set" aria-hidden="true">' + set + '</span>';
       mktKey = key;
       $('tick').hidden = false;
       if (unlocked) syncHead();
     }
     TK.forEach(function (q) {
-      var el = $('tktrack').querySelector('[data-k="' + q.k + '"]'); if (!el) return;
       var f = fmtQ(q);
-      el.children[1].textContent = f.v;
-      el.children[2].textContent = f.ch;
-      el.children[2].className = f.cls;
+      $('tktrack').querySelectorAll('[data-k="' + q.k + '"]').forEach(function (el) {   // both copies
+        el.children[1].textContent = f.v;
+        el.children[2].textContent = f.ch;
+        el.children[2].className = f.cls;
+      });
     });
   }
   function loadMarkets() {
@@ -1359,7 +1361,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 3ad5ecfb50b4</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version ed5a7ba7fe23</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
