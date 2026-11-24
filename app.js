@@ -215,6 +215,7 @@
   }
   // ---- market ticker: quotes saved by a GitHub job every ~10 min (delayed), read every 2 min ----
   var MKT = null, mktKey = '';
+  try { MKT = JSON.parse(localStorage.getItem('glencal.mkt') || 'null'); } catch (e) {}
   var DP = { USDJPY: 2, SPX: 2, NDX: 2, DOW: 2 };
   function mktURL() {
     var h = location.hostname, m = /^([^.]+)\.github\.io$/.exec(h);
@@ -235,16 +236,17 @@
   }
   function renderTicker() {
     if (!MKT || !MKT.items || !MKT.items.length) return;
-    var key = MKT.items.map(function (q) { return q.k; }).join(',');
+    var TK = MKT.items.filter(function (q) { return q.tk !== false; });
+    var key = TK.map(function (q) { return q.k; }).join(',');
     if (key !== mktKey) {   // build once; later refreshes update numbers in place so the scroll doesn't restart
-      $('tktrack').innerHTML = MKT.items.map(function (q) {
+      $('tktrack').innerHTML = TK.map(function (q) {
         return '<span class="tq" data-k="' + esc(q.k) + '"><b>' + esc(q.k) + '</b><span class="v"></span><span class="fl"></span></span>';
       }).join('');
       mktKey = key;
       $('tick').hidden = false;
       if (unlocked) syncHead();
     }
-    MKT.items.forEach(function (q) {
+    TK.forEach(function (q) {
       var el = $('tktrack').querySelector('[data-k="' + q.k + '"]'); if (!el) return;
       var f = fmtQ(q);
       el.children[1].textContent = f.v;
@@ -255,11 +257,11 @@
   function loadMarkets() {
     var url = mktURL(); if (!url || document.hidden) return;
     fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { if (d && d.items) { MKT = d; renderTicker(); } }).catch(function () {});
+      .then(function (d) { if (d && d.items) { MKT = d; renderTicker(); try { localStorage.setItem('glencal.mkt', JSON.stringify(d)); } catch (e) {} if (tab === 'tools') Tools.draw(); } }).catch(function () {});
   }
   function showMarkets() {
     if (!MKT) return;
-    openSheet('<h2>Markets</h2><table class="mt">' + MKT.items.map(function (q) {
+    openSheet('<h2>Markets</h2><table class="mt">' + MKT.items.filter(function (q) { return q.tk !== false; }).map(function (q) {
       var f = fmtQ(q);
       return '<tr><td>' + esc(q.k) + '</td><td>' + f.v + '</td><td class="' + f.cls + '" style="color:var(--' + (f.cls === 'up' ? 'up' : f.cls === 'dn' ? 'red' : 'muted') + ')">' + f.ch + '</td></tr>';
     }).join('') + '</table>' +
@@ -331,20 +333,27 @@
     if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
     if (tab === 'fan' && t !== 'fan' && FAN) { fanSeen = FAN.items.length ? FAN.items[0].t : fanSeen; prefs('fanSeen', fanSeen); }
     tab = t;
-    var cal = t === 'cal', news = t === 'news', fan = t === 'fan';
-    $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan);
-    $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan;
-    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('openx').hidden = cal;
+    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools';
+    $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
+    $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
+    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl; $('cmdrow').hidden = tl;
     $('ask').hidden = !cal; $('jump').hidden = !cal; $('add').hidden = !cal;
     $('q').value = '';
     if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
     else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); SC().scrollTop = 0; }
+    else if (tl) { $('tchips').innerHTML = Tools.chips(); Tools.draw(); SC().scrollTop = 0; }
     else { showPast = false; render(); jumpToday(false); }
     syncHead();
   }
   $('tab-cal').addEventListener('click', function () { setTab('cal'); });
   $('tab-news').addEventListener('click', function () { setTab('news'); });
   $('tab-fan').addEventListener('click', function () { setTab('fan'); });
+  $('tab-tools').addEventListener('click', function () { setTab('tools'); });
+  Tools.init($('tools'), function () { return MKT; });
+  $('tchips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-tool]'); if (!b) return;
+    Tools.select(b.getAttribute('data-tool')); $('tchips').innerHTML = Tools.chips(); SC().scrollTop = 0;
+  });
   $('nchips').addEventListener('click', function (e) {
     var b = e.target.closest('[data-n]'); if (!b) return;
     var k = b.getAttribute('data-n');
@@ -679,7 +688,7 @@
     if (pull.y0 === null) return;
     var dy = e.touches[0].clientY - pull.y0;
     if (dy <= 0 || SC().scrollTop > 0) { if (pull.on) setPull(0); pull.on = false; return; }
-    if (tab === 'cal' && showPast) return;
+    if ((tab === 'cal' && showPast) || tab === 'tools') return;
     pull.on = true; e.preventDefault();
     pull.d = Math.min(130, dy * 0.45); setPull(pull.d);
   }, { passive: false });
@@ -1192,7 +1201,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 35cb6531d995</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version e10e43b0e6d4</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {

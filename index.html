@@ -106,7 +106,7 @@ input, textarea, select { font-family: var(--mono); }
 /* feed */
 main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right: max(0.6rem, env(safe-area-inset-right, 0px)); padding-bottom: 2rem; }
 /* bottom section bar */
-.tabs { position: relative; flex: none; z-index: 7; display: grid; grid-template-columns: 1fr 1fr 1fr; background: var(--panel); border-top: 1px solid var(--line); padding: 0 max(0.6rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(0.6rem, env(safe-area-inset-left, 0px)); }
+.tabs { position: relative; flex: none; z-index: 7; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--panel); border-top: 1px solid var(--line); padding: 0 max(0.6rem, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(0.6rem, env(safe-area-inset-left, 0px)); }
 .tabs button { all: unset; text-align: center; padding: 0.75rem 0; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.14em; color: var(--muted); cursor: pointer; border-top: 2px solid transparent; }
 .tabs button[aria-pressed="true"] { color: var(--amber); border-top-color: var(--amber); }
 /* news */
@@ -120,6 +120,24 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .nrow.cb { box-shadow: inset 2px 0 0 var(--amber); padding-left: 0.3rem; }
 .nrow.new .nt::after { content: " ●"; color: var(--amber); font-size: 0.6rem; vertical-align: 0.15rem; }
 .nrow:visited .nh { color: var(--muted); }
+/* tools */
+.toolsbox { padding-top: 0.6rem; display: flex; flex-direction: column; gap: 0.7rem; }
+.cdisp { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.6rem; text-align: right; box-shadow: inset 0 2px 6px rgba(0,0,0,0.6); }
+.cexpr { color: var(--muted); min-height: 1.3em; overflow-wrap: anywhere; font-size: 1rem; }
+.cres { all: unset; display: block; width: 100%; text-align: right; font-size: 2rem; font-weight: 800; color: var(--amber); overflow-wrap: anywhere; cursor: pointer; }
+.ckeys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; margin-top: 0.5rem; }
+.ck2 { font-family: var(--mono); font-size: 1.35rem; font-weight: 700; padding: 0.65rem 0; color: var(--fg); background: linear-gradient(180deg, #262626, #111); border: 1px solid #333; border-top-color: #444; border-radius: 6px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 0 #000; cursor: pointer; touch-action: manipulation; }
+.ck2.op { color: var(--amber); }
+.ck2.fn { color: var(--cyan); font-size: 1rem; }
+.ck2.eq { background: var(--amber); color: var(--on-amber); border-color: var(--amber); }
+.ck2:active { transform: translateY(1px); box-shadow: none; }
+.tapehead { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 0.75rem; letter-spacing: 0.12em; margin-top: 0.6rem; }
+.tape .tl { all: unset; box-sizing: border-box; display: flex; justify-content: space-between; gap: 0.6rem; width: 100%; padding: 0.35rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.te { color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.tr2 { color: var(--fg); white-space: nowrap; }
+.solve { display: flex; gap: 0.4rem; } .solve input { flex: 1; min-width: 0; }
+.th { margin: 0.6rem 0 0.1rem; font-size: 0.8rem; letter-spacing: 0.12em; color: var(--amber); }
+.fxt td:nth-child(2) { font-weight: 700; }
 /* fantasy */
 .sp { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; }
 .sp.NBA { color: #f28c38; } .sp.NFL { color: #6fa8ff; }
@@ -247,18 +265,20 @@ textarea { min-height: 9rem; resize: vertical; }
       <a id="openx" class="key" href="https://x.com/notifications" target="_blank" rel="noopener noreferrer" hidden>X ↗</a>
       <button id="more" class="key" type="button" aria-label="Menu">···</button>
     </div>
-    <label class="cmd"><input id="q" class="search" type="search" placeholder="search" autocomplete="off" aria-label="Search"></label>
+    <label class="cmd" id="cmdrow"><input id="q" class="search" type="search" placeholder="search" autocomplete="off" aria-label="Search"></label>
     <div id="chips" class="chips" aria-label="Categories"></div>
     <div id="nchips" class="chips" aria-label="News filters" hidden></div>
     <div id="fchips" class="chips" aria-label="Fantasy filters" hidden></div>
+    <div id="tchips" class="chips" aria-label="Tools" hidden></div>
     <div id="notice" class="notice" hidden></div>
   </div></header>
   <div id="scroll" class="scroll"><div id="pw"><div id="pull" class="pull"></div>
   <main id="list"></main>
   <main id="news" hidden></main>
   <main id="fan" hidden></main>
+  <main id="tools" hidden></main>
   </div></div>
-  <nav class="tabs" aria-label="Sections"><button id="tab-cal" type="button" data-tab="cal" aria-pressed="true">CALENDAR</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button></nav>
+  <nav class="tabs" aria-label="Sections"><button id="tab-cal" type="button" data-tab="cal" aria-pressed="true">CALENDAR</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button><button id="tab-tools" type="button" data-tab="tools" aria-pressed="false">TOOLS</button></nav>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button id="undo" class="key go" type="button">UNDO</button></div>
   <div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true"></div></div>
 </div>
@@ -268,6 +288,7 @@ textarea { min-height: 9rem; resize: vertical; }
 <script src="finance.js"></script>
 <script src="push-key.js"></script>
 <script src="vault.js"></script>
+<script src="tools.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

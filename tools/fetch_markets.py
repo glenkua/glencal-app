@@ -8,6 +8,10 @@ SYMBOLS = [  # (label, Yahoo symbol, kind)
     ("USDJPY", "JPY=X", "fx"), ("AUDUSD", "AUDUSD=X", "fx"),
     ("SPX", "^GSPC", "index"), ("NDX", "^NDX", "index"), ("DOW", "^DJI", "index"),
     ("UST 2Y", "2YY=F", "yield"), ("UST 5Y", "^FVX", "yield"), ("UST 10Y", "^TNX", "yield"), ("UST 30Y", "^TYX", "yield"),
+    # converter only (not shown in the ticker)
+    ("NZDUSD", "NZDUSD=X", "fx-"), ("USDCNH", "CNH=X", "fx-"), ("USDHKD", "HKD=X", "fx-"), ("USDCHF", "CHF=X", "fx-"),
+    ("USDCAD", "CAD=X", "fx-"), ("USDKRW", "KRW=X", "fx-"), ("USDINR", "INR=X", "fx-"), ("USDMYR", "MYR=X", "fx-"),
+    ("USDIDR", "IDR=X", "fx-"), ("USDTHB", "THB=X", "fx-"),
 ]
 SGT = timezone(timedelta(hours=8))
 
@@ -23,7 +27,7 @@ items = []
 for label, sym, kind in SYMBOLS:
     try:
         price, prev, t = quote(sym)
-        items.append({"k": label, "kind": kind, "price": price, "prev": prev,
+        items.append({"k": label, "kind": kind.rstrip("-"), "tk": not kind.endswith("-"), "price": price, "prev": prev,
                       "t": datetime.fromtimestamp(t, SGT).strftime("%Y-%m-%d %H:%M") if t else ""})
     except Exception as e:
         print("skip", sym, e)
