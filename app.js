@@ -31,9 +31,9 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
-  var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] };
+  var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [];
   function persist() {
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -151,6 +151,7 @@
     calcTape = data.calc || [];
     notes = data.notes || [];
     txns = data.txns || []; txMeta = data.txMeta || { last: 0, failed: [] };
+    mailPins = data.mailPins || [];
     if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
     Tools.setTape(calcTape);
     unlocked = true;
@@ -172,7 +173,7 @@
     closeSheet();
     $('list').innerHTML = '';
     askHistory = []; pending = null;
-    calcTape = []; Tools.setTape([]); notes = []; txns = []; MAIL.list = null;
+    calcTape = []; Tools.setTape([]); notes = []; txns = []; mailPins = []; MAIL.list = null;
     showUnlock();
   }
 
@@ -627,12 +628,20 @@
     if (!Gmail.token()) { $('mail').innerHTML = signinCard('Read your Gmail here (and your Hotmail, if you forward it to Gmail).'); return; }
     var h = '<div class="nmeta">Gmail ' + esc(Gmail.status()) + ' · ' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : 'tap Primary to load')) +
       (MAIL.q ? ' · search: ' + esc(MAIL.q) : '') + ' · pull down to refresh</div>';
+    var pinned = {}; mailPins.forEach(function (p) { pinned[p.id] = 1; });
+    var row = function (m) {
+      return '<div class="mwrap"><div class="swipe-pin" aria-hidden="true">' + (pinned[m.id] ? 'UNPIN' : '📌 PIN') + '</div>' +
+        '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-mid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
+        '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + (pinned[m.id] ? '📌 ' : '') + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span>' +
+        (m.snippet ? '<span class="mp">' + esc(m.snippet) + '</span>' : '') + '</span></button></div>';
+    };
+    if (mailPins.length) h += '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + mailPins.length + '</span></h2>' +
+      mailPins.slice().sort(function (a, b) { return b.date - a.date; }).map(row).join('');
     var lastDay = '';
     (MAIL.list || []).forEach(function (m) {
       var day = GC.iso(new Date(m.date));
       if (day !== lastDay) { var l = dLabel(day); h += '<h2 class="mbar"><span>' + (day === todayISO ? 'TODAY · ' : '') + l.dow + ' ' + l.day + ' ' + l.mon + '</span></h2>'; lastDay = day; }
-      h += '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-mid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
-        '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span><span class="mp">' + esc(m.snippet) + '</span></span></button>';
+      h += row(m);
     });
     if (MAIL.list && !MAIL.list.length) h += '<p class="empty">No emails here.</p>';
     if (MAIL.list && MAIL.list.length) h += MAIL.next
@@ -855,7 +864,41 @@
   $('tab-ins').addEventListener('click', function () { setTab('ins'); });
   // older mail loads by itself when you scroll near the bottom
   SC().addEventListener('scroll', function () { if (tab === 'mail' && MAIL.next && !MAIL.more && SC().scrollTop + SC().clientHeight > SC().scrollHeight - 600) loadOlder(); }, { passive: true });
-  $('mail').addEventListener('click', function (e) { if (e.target.closest('[data-older]')) { loadOlder(); return; } var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
+  var msw = null, mJust = false;
+  function mSet(el, x, anim) { el.style.transition = anim ? 'transform 180ms ease' : 'none'; el.style.transform = x ? 'translateX(' + x + 'px)' : ''; }
+  function toggleMailPin(id) {
+    var i = mailPins.findIndex(function (p) { return p.id === id; });
+    if (i >= 0) { mailPins.splice(i, 1); flashToast('Unpinned'); }
+    else {
+      var m = (MAIL.list || []).filter(function (x) { return x.id === id; })[0]; if (!m) return;
+      mailPins.push({ id: m.id, threadId: m.threadId, subject: m.subject, from: m.from, date: m.date, unread: false, snippet: '' });
+      flashToast('Pinned');
+    }
+    persist(); renderMail();
+  }
+  $('mail').addEventListener('pointerdown', function (e) {
+    var el = e.target.closest('.mrow'); if (!el || !el.parentNode.classList.contains('mwrap')) return;
+    msw = { el: el, x0: e.clientX, y0: e.clientY, dx: 0, horiz: null };
+  });
+  $('mail').addEventListener('pointermove', function (e) {
+    if (!msw) return;
+    var dx = e.clientX - msw.x0, dy = e.clientY - msw.y0;
+    if (msw.horiz === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) msw.horiz = dx > 0 && Math.abs(dx) > Math.abs(dy);
+    if (!msw.horiz) return;
+    msw.dx = dx; mSet(msw.el, Math.max(0, Math.min(msw.el.offsetWidth * 0.5, dx)), false);
+    var pinEl = msw.el.parentNode.querySelector('.swipe-pin'); if (pinEl) pinEl.classList.toggle('ready', dx > msw.el.offsetWidth * 0.33);
+  });
+  function mEnd() {
+    if (!msw) return;
+    var s2 = msw; msw = null;
+    if (!s2.horiz) return;
+    mJust = true; setTimeout(function () { mJust = false; }, 350);
+    mSet(s2.el, 0, true);
+    if (s2.dx > s2.el.offsetWidth * 0.33) { var id = s2.el.getAttribute('data-mid'); setTimeout(function () { toggleMailPin(id); }, 190); }
+  }
+  $('mail').addEventListener('pointerup', mEnd);
+  $('mail').addEventListener('pointercancel', mEnd);
+  $('mail').addEventListener('click', function (e) { if (mJust) return; if (e.target.closest('[data-older]')) { loadOlder(); return; } var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
   $('ins').addEventListener('click', function (e) {
     var tb = e.target.closest('[data-tx]');
     if (tb) {
@@ -1826,7 +1869,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version e8d93f6e6301</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version d45c32bfcd14</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {

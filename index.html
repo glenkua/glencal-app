@@ -164,6 +164,8 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .nck.all { color: var(--up); }
 .ned textarea { min-height: 46vh; line-height: 1.45; }
 /* mail */
+.mwrap { position: relative; overflow: hidden; }
+.mwrap .mrow { position: relative; z-index: 1; background: var(--bg); touch-action: pan-y; }
 .mrow { all: unset; box-sizing: border-box; display: grid; grid-template-columns: 3.1em minmax(0, 1fr); column-gap: 0.4rem; width: 100%; padding: 0.42rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .mrow .mt2 { color: var(--cyan); font-size: 0.85rem; }
 .mrow > span:last-child { display: block; min-width: 0; overflow: hidden; }
