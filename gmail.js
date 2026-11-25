@@ -33,6 +33,7 @@ var Gmail = (function () {
       return t && exp > Date.now() + 30000 ? t : null;
     },
     forget: function () { set('token', null); set('exp', null); },
+    status: function () { var t = get('token'), exp = +get('exp'); if (!t) return 'not signed in'; var m = Math.round((exp - Date.now()) / 60000); return m > 0 ? 'signed in, ' + m + ' min left' : 'sign-in expired'; },
     // renew without asking, if Google still remembers this phone; at most once every 10 minutes
     canRenew: function () { return get('ok') === '1' && Date.now() - (+get('triedAt') || 0) > 600000; },
     renew: function () { set('triedAt', String(Date.now())); this.start({ silent: true }); },

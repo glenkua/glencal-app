@@ -611,8 +611,11 @@
     $('mchips').innerHTML = MAIL_CHIPS.map(function (c) { return '<button class="chip" type="button" data-m="' + c[0] + '" aria-pressed="' + (MAIL.filter === c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
   }
   function renderMail() {
+    try { renderMail2(); } catch (e) { $('mail').innerHTML = '<p class="err" style="margin-top:1rem">Mail could not be shown: ' + esc(e.message || e) + '</p><p class="small">Gmail: ' + esc(Gmail.status()) + '</p>'; }
+  }
+  function renderMail2() {
     if (!Gmail.token()) { $('mail').innerHTML = signinCard('Read your Gmail here (and your Hotmail, if you forward it to Gmail).'); return; }
-    var h = '<div class="nmeta">' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : '')) +
+    var h = '<div class="nmeta">Gmail ' + esc(Gmail.status()) + ' · ' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : 'tap Primary to load')) +
       (MAIL.q ? ' · search: ' + esc(MAIL.q) : '') + ' · pull down to refresh</div>';
     var lastDay = '';
     (MAIL.list || []).forEach(function (m) {
@@ -1776,7 +1779,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f9d332755be8</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 67ca57cc4b74</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
