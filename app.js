@@ -670,7 +670,7 @@
       take(function (x) { return x.sg; }, 3);
       picks.sort(function (a, b) { return a.t < b.t ? 1 : -1; });
     }
-    html += '<section class="bsec"><h2 class="mbar"><span>HEADLINES · US · SG · MAJOR</span></h2>' + (picks.length ? picks.map(function (n) {
+    html += '<section class="bsec"><h2 class="mbar"><span>HEADLINES</span></h2>' + (picks.length ? picks.map(function (n) {
       return '<a class="nrow' + (n.cb ? ' cb' : '') + '" href="' + esc(n.url) + '" target="_blank" rel="noopener noreferrer">' +
         '<span class="nt">' + esc(n.t.slice(11)) + '</span><span class="ns">' + esc(n.src) + '</span>' +
         '<span class="nh">' + (n.cb ? '<span class="star">★</span> ' : '') + (n.sg ? '🇸🇬 ' : '') + esc(n.title) + '</span></a>';
@@ -2422,7 +2422,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 070df409b2ec</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version d8ec8b7cbe1e</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
