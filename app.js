@@ -1010,7 +1010,7 @@
   // plain text for Notes: same clean-up, web addresses shortened to their site name
   function mailNoteText(m) {
     var t = String(m.text || m.snippet || '').slice(0, 15000)
-      .replace(/[͏­​-‏   ⁠-⁤﻿]/g, '')
+      .replace(/[͏­​-‏\u2028\u2029 ⁠-⁤﻿]/g, '')
       .replace(/\[(?:image|cid|img)[^\]]*\]/gi, '')
       .replace(/<(https?:\/\/[^>\s]+)>/g, ' $1 ')
       .replace(/\[\s*(https?:\/\/[^\]\s]+)\s*\]/g, ' $1 ')
@@ -2280,7 +2280,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 6baff4f5a9c1</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version e4755d8a7e96</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
