@@ -31,9 +31,10 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
+  var NOTE_CATS = ['Impt', 'Work', 'Finance', 'Housing', 'Fitness', 'Car', 'Travel', 'Personal'], noteCats = NOTE_CATS.slice(), noteFilter = 'all';
   var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [], bookSeen = [], mailSeen = [], seenSet = {};
   function persist() {
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800), mailSeen: mailSeen.slice(-1500), watch: WL };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800), mailSeen: mailSeen.slice(-1500), watch: WL, noteCats: noteCats };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -154,6 +155,7 @@
     mailPins = data.mailPins || [];
     bookSeen = data.bookSeen || [];
     mailSeen = data.mailSeen || []; seenSet = {}; mailSeen.forEach(function (id) { seenSet[id] = 1; });
+    noteCats = Array.isArray(data.noteCats) ? data.noteCats : NOTE_CATS.slice();
     WL = data.watch && data.watch.list ? data.watch : JSON.parse(JSON.stringify(WL_DEFAULT)); normWL();
     txns = []; txMeta = { v: 2, last: 0, failed: [] };   // insights removed: don't keep card data
     if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
@@ -661,7 +663,7 @@
   }
   $('brief').addEventListener('click', function (e) {
     if (e.target.closest('[data-bmenu]')) { showMenu(); return; }
-    var bm = e.target.closest('[data-bmid]'); if (bm) { openMail(bm.getAttribute('data-bmid')); return; }
+    var bm = e.target.closest('[data-bmid]'); if (bm) { if (!lpJust) openMail(bm.getAttribute('data-bmid')); return; }
     if (e.target.closest('[data-bgo]')) { Gmail.start(); return; }
     var b = e.target.closest('[data-bid]'); if (!b) return;
     var id = b.getAttribute('data-bid');
@@ -682,13 +684,14 @@
   }
   function renderNotes() {
     var q = $('q').value.trim().toLowerCase();
-    var list = notes.filter(function (n) { return (n.title || n.body) && (!q || (n.title + ' ' + n.body).toLowerCase().indexOf(q) >= 0); })
+    renderNoteChips();
+    var list = notes.filter(function (n) { return (n.title || n.body) && (noteFilter === 'all' || n.cat === noteFilter) && (!q || (n.title + ' ' + n.body + ' ' + (n.cat || '')).toLowerCase().indexOf(q) >= 0); })
       .sort(function (a, b) { return a.updated < b.updated ? 1 : -1; });
     var row = function (n) {
       var body = n.title ? n.body : (n.body || '').split('\n').slice(1).join('\n');
       return '<div class="nwrap"><div class="swipe-pin" aria-hidden="true">' + (n.pinned ? 'UNPIN' : '📌 PIN') + '</div>' +
         '<div class="swipe-del"><button type="button" data-ndel="' + esc(n.id) + '">DELETE</button></div>' +
-        '<button type="button" class="nnote" data-note="' + esc(n.id) + '"><span class="nt1">' + esc(noteTitle(n)) + '</span><span class="nd">' +
+        '<button type="button" class="nnote" data-note="' + esc(n.id) + '"><span class="nt1">' + esc(noteTitle(n)) + '</span><span class="nd">' + (n.cat && noteFilter === 'all' ? '<span class="ncat">' + esc(n.cat.toUpperCase()) + '</span>' : '') +
         (function () { var t = (n.body.match(/^\s*[☐☑] /gm) || []).length, d = (n.body.match(/^\s*☑ /gm) || []).length; return t ? '<span class="nck' + (d === t ? ' all' : '') + '">' + d + '/' + t + ' ✓</span> ' : ''; })() +
         esc(noteWhen(n.updated)) + '</span>' +
         '<span class="np">' + esc((body || '').trim().slice(0, 240)) + '</span></button></div>';
@@ -698,12 +701,132 @@
       '<h2 class="mbar"><span>NOTES</span><span class="n">' + rest.length + '</span></h2>' +
       (rest.length ? rest.map(row).join('') : '<p class="empty">' + (q ? 'NO MATCHES' : pinned.length ? 'No other notes.' : 'No notes yet. Tap + ADD to write one.') + '</p>');
   }
+  function renderNoteChips() {
+    var count = function (c) { return notes.filter(function (n) { return (n.title || n.body) && (c === 'all' || n.cat === c); }).length; };
+    $('ntchips').innerHTML = [['all', 'All']].concat(noteCats.map(function (c) { return [c, c]; })).map(function (c) {
+      return '<button class="chip" type="button" data-ncat="' + esc(c[0]) + '" aria-pressed="' + (noteFilter === c[0]) + '">' + esc(c[1]) + '<span class="n">' + count(c[0]) + '</span></button>';
+    }).join('') + '<button class="chip" type="button" data-ncatedit="1" aria-label="Add or remove categories">+</button>';
+  }
+  function addNoteCat(name) {
+    name = String(name || '').trim().slice(0, 20);
+    if (!name) return null;
+    var hit = noteCats.filter(function (c) { return c.toLowerCase() === name.toLowerCase(); })[0];
+    if (hit) return hit;
+    noteCats.push(name); persist(); return name;
+  }
+  function catSheet() {
+    openSheet('<h2>Note categories</h2><div class="f"><input id="nc-new" placeholder="New category, e.g. Kids" maxlength="20"></div>' +
+      '<div class="actions"><button class="btn primary" type="button" data-act="nc-add">Add</button></div>' +
+      '<div class="catlist">' + noteCats.map(function (c) {
+        return '<div><span>' + esc(c) + '</span><button class="btn" type="button" data-ncdel="' + esc(c) + '">Remove</button></div>';
+      }).join('') + '</div><p class="small">Removing a category keeps its notes; they just show under All.</p>' +
+      '<div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
+  }
+  function catPickHTML(sel) {
+    return '<div class="catpick" id="catpick">' + [''].concat(noteCats).map(function (c) {
+      return '<button class="chip" type="button" data-pickcat="' + esc(c) + '" aria-pressed="' + ((sel || '') === c) + '">' + (c ? esc(c) : 'None') + '</button>';
+    }).join('') + '<button class="chip" type="button" data-pickcat-new="1">+ New</button></div>' +
+      '<div class="f" id="catnewrow" hidden><input id="cat-new" placeholder="New category name" maxlength="20"></div>';
+  }
+  function pickedCat() {
+    var v = $('cat-new') && !$('catnewrow').hidden ? $('cat-new').value.trim() : '';
+    if (v) return addNoteCat(v);
+    var b = $('catpick') && $('catpick').querySelector('[aria-pressed="true"]');
+    return b ? b.getAttribute('data-pickcat') : '';
+  }
+  // ---- save an email to Notes: choose the title and category first ----
+  var pendingMailNote = null;
+  function mailToNoteSheet(m) {
+    pendingMailNote = m;
+    openSheet('<h2>Save to Notes</h2><div class="f"><label class="small" for="mn-title">Title</label><input id="mn-title" value="' + esc(m.subject || '') + '"></div>' +
+      '<span class="small">CATEGORY</span>' + catPickHTML(noteFilter !== 'all' ? noteFilter : '') +
+      '<div class="actions"><button class="btn" type="button" data-act="close">Cancel</button><button class="btn primary grow" type="button" data-act="mn-save">Save note</button></div>');
+  }
+  function saveMailNote() {
+    var m = pendingMailNote; if (!m) return;
+    var title = $('mn-title').value.trim() || m.subject || 'Email', cat = pickedCat();
+    pendingMailNote = null; closeSheet(); flashToast('Saving…');
+    (m.text ? Promise.resolve(m) : fetchMail(m.id)).then(function (full) { return full; }, function () { return m; }).then(function (full) {
+      var nowIso = new Date().toISOString();
+      notes.push({ id: 'n' + uid(), title: title, body: mailNoteText(full), cat: cat || '', pinned: false, created: nowIso, updated: nowIso });
+      persist(); if (tab === 'notes') renderNotes(); flashToast('Saved to Notes' + (cat ? ' · ' + cat : ''));
+    });
+  }
+  // ---- long-press an email: quick actions ----
+  function mailActions(id) {
+    var m = (MAIL.list || []).concat(mailPins, BMAIL.list || []).filter(function (x) { return x.id === id; })[0]; if (!m) return;
+    var pinned = mailPins.some(function (x) { return x.id === id; });
+    openSheet('<h2 style="text-transform:none;letter-spacing:0">' + esc(m.subject) + '</h2><p class="small">' + esc(m.from) + '</p>' +
+      '<div class="actions" style="flex-direction:column;align-items:stretch">' +
+      '<button class="btn primary" type="button" data-mact="note" data-id="' + esc(id) + '">📝 Save to Notes</button>' +
+      '<button class="btn" type="button" data-mact="pin" data-id="' + esc(id) + '">' + (pinned ? 'Unpin' : '📌 Pin') + '</button>' +
+      '<a class="btn" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId || m.id) + '" target="_blank" rel="noopener noreferrer">Open in Gmail</a>' +
+      '<button class="btn" type="button" data-act="close">Cancel</button></div>');
+  }
+  var lp = null, lpJust = false;
+  function lpStart(e) {
+    var el = e.target.closest('[data-mid],[data-bmid]'); if (!el) return;
+    var id = el.getAttribute('data-mid') || el.getAttribute('data-bmid');
+    lp = { x: e.clientX, y: e.clientY, t: setTimeout(function () {
+      lp = null; lpJust = true; mJust = true; setTimeout(function () { lpJust = false; mJust = false; }, 450);
+      if (navigator.vibrate) navigator.vibrate(10);
+      mailActions(id);
+    }, 550) };
+  }
+  function lpMove(e) { if (lp && (Math.abs(e.clientX - lp.x) > 8 || Math.abs(e.clientY - lp.y) > 8)) { clearTimeout(lp.t); lp = null; } }
+  function lpEnd() { if (lp) { clearTimeout(lp.t); lp = null; } }
+  ['mail', 'brief'].forEach(function (id) {
+    $(id).addEventListener('pointerdown', lpStart);
+    $(id).addEventListener('pointermove', lpMove);
+    $(id).addEventListener('pointerup', lpEnd);
+    $(id).addEventListener('pointercancel', lpEnd);
+    $(id).addEventListener('contextmenu', function (e) { if (e.target.closest('[data-mid],[data-bmid]')) e.preventDefault(); });
+  });
+  $('ntchips').addEventListener('click', function (e) {
+    if (e.target.closest('[data-ncatedit]')) { catSheet(); return; }
+    var b = e.target.closest('[data-ncat]'); if (!b) return;
+    noteFilter = b.getAttribute('data-ncat'); renderNotes(); SC().scrollTop = 0;
+  });
+  $('sheet').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pickcat]');
+    if (b) { $('catpick').querySelectorAll('[data-pickcat]').forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); $('catnewrow').hidden = true; return; }
+    if (e.target.closest('[data-pickcat-new]')) { $('catpick').querySelectorAll('[data-pickcat]').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); }); $('catnewrow').hidden = false; $('cat-new').focus(); return; }
+    b = e.target.closest('[data-ncdel]');
+    if (b) {
+      var c = b.getAttribute('data-ncdel');
+      noteCats = noteCats.filter(function (x) { return x !== c; });
+      notes.forEach(function (n) { if (n.cat === c) n.cat = ''; });
+      if (noteFilter === c) noteFilter = 'all';
+      persist(); catSheet(); if (tab === 'notes') renderNotes(); return;
+    }
+    b = e.target.closest('[data-mact]');
+    if (b) {
+      var mid = b.getAttribute('data-id'), m = (MAIL.list || []).concat(mailPins, BMAIL.list || []).filter(function (x) { return x.id === mid; })[0];
+      if (b.getAttribute('data-mact') === 'note' && m) mailToNoteSheet(mailCache[mid] || m);
+      else if (b.getAttribute('data-mact') === 'pin') { closeSheet(); toggleMailPin(mid); }
+    }
+  });
+  $('sheet').addEventListener('change', function (e) {
+    if (e.target.id !== 'n-cat' || !noteEd) return;
+    var v = e.target.value;
+    if (v === '__new') {
+      var name = addNoteCat(window.prompt('New category name') || '');
+      if (!name) { e.target.value = noteEd.cat || ''; return; }
+      v = name;
+      e.target.innerHTML = noteCatOptions(v);
+    }
+    noteEd.cat = v; noteChanged();
+  });
+  function noteCatOptions(sel) {
+    return [''].concat(noteCats).map(function (c) { return '<option value="' + esc(c) + '"' + ((sel || '') === c ? ' selected' : '') + '>' + (c ? esc(c) : 'No category') + '</option>'; }).join('') + '<option value="__new">+ New category…</option>';
+  }
   var noteEd = null, noteTimer = null, noteDelArmed = false;
   function openNote(id) {
     var now = new Date().toISOString();
-    noteEd = notes.filter(function (n) { return n.id === id; })[0] || { id: 'n' + uid(), title: '', body: '', pinned: false, created: now, updated: now };
+    noteEd = notes.filter(function (n) { return n.id === id; })[0] || { id: 'n' + uid(), title: '', body: '', cat: noteFilter !== 'all' ? noteFilter : '', pinned: false, created: now, updated: now };
     noteDelArmed = false;
     openSheet('<div class="ned f"><input id="n-title" placeholder="Title (optional)" value="' + esc(noteEd.title) + '">' +
+      '<select id="n-cat" aria-label="Category">' + noteCatOptions(noteEd.cat) + '</select>' +
       '<div class="ntool" id="ntool">' +
         [['bullet', '•', 'Bullet list'], ['num', '1.', 'Numbered list'], ['check', '☐', 'Checklist'], ['tick', '☑', 'Tick or untick this line'],
          ['time', '🕐', 'Insert date and time'], ['line', '—', 'Divider'], ['share', 'Share', 'Share this note']].map(function (t) {
@@ -1035,10 +1158,10 @@
     }
     openSheet('<div class="mtitle">' + esc(m.subject) + '</div>' +
       '<p class="mfrom">' + esc(m.from) + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + '</p>' + sum +
-      '<div class="mnav"><button class="btn" type="button" data-act="m-prev"' + (pos <= 0 ? ' disabled' : '') + '>‹ Newer</button>' +
-        '<span class="small">' + (pos >= 0 ? (pos + 1) + ' / ' + order.length + (MAIL.next ? '+' : '') : '') + ' · swipe ‹ ›</span>' +
-        '<button class="btn" type="button" data-act="m-next"' + (pos < 0 || (pos >= order.length - 1 && !MAIL.next) ? ' disabled' : '') + '>Older ›</button></div>' +
       '<div class="mbody">' + (full ? mailBodyHTML(m.text || m.snippet) : esc(m.snippet || '') + '<p class="small">Loading the full email…</p>') + '</div>' +
+      '<div class="mnav"><button class="btn" type="button" data-act="m-prev"' + (pos <= 0 ? ' disabled' : '') + '>‹ Newer</button>' +
+        '<span class="small">' + (pos >= 0 ? (pos + 1) + ' / ' + order.length + (MAIL.next ? '+' : '') : '') + '</span>' +
+        '<button class="btn" type="button" data-act="m-next"' + (pos < 0 || (pos >= order.length - 1 && !MAIL.next) ? ' disabled' : '') + '>Older ›</button></div>' +
       '<div class="actions"><a class="btn grow" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId || m.id) + '" target="_blank" rel="noopener noreferrer">Open in Gmail</a>' +
       '<button class="btn" type="button" data-act="m-note">Save to Notes</button><button class="btn" type="button" data-act="m-events">Make events</button>' +
       '<button class="btn primary" type="button" data-act="close">Done</button></div>');
@@ -1234,7 +1357,7 @@
     var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief', nt = t === 'notes', ml = t === 'mail', ins = t === 'ins', wt = t === 'watch';
     $('tab-mail').setAttribute('aria-pressed', ml); $('mail').hidden = !ml; $('mchips').hidden = !ml;
     $('tab-ins').setAttribute('aria-pressed', ins); $('ins').hidden = !ins; $('ichips').hidden = !ins;
-    $('tab-notes').setAttribute('aria-pressed', nt); $('notes').hidden = !nt;
+    $('tab-notes').setAttribute('aria-pressed', nt); $('notes').hidden = !nt; $('ntchips').hidden = !nt;
     $('tab-watch').setAttribute('aria-pressed', wt); $('watch').hidden = !wt; $('wchips').hidden = !wt;
     $('tab-brief').setAttribute('aria-pressed', br); $('brief').hidden = !br;
     $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
@@ -2280,7 +2403,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b0fbc9c3739b</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f6aa3a77a9be</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2467,7 +2590,9 @@
     else if (act === 'gmail') showGmail();
     else if (act === 'm-prev') mailStep(-1);
     else if (act === 'm-next') mailStep(1);
-    else if (act === 'm-note' && openMailMsg) { var nowIso = new Date().toISOString(); notes.push({ id: 'n' + uid(), title: openMailMsg.subject, body: mailNoteText(openMailMsg), pinned: false, created: nowIso, updated: nowIso }); persist(); closeSheet(); flashToast('Saved to Notes'); }
+    else if (act === 'm-note' && openMailMsg) mailToNoteSheet(openMailMsg);
+    else if (act === 'mn-save') saveMailNote();
+    else if (act === 'nc-add') { var nn = addNoteCat($('nc-new').value); if (nn) { catSheet(); if (tab === 'notes') renderNotes(); } }
     else if (act === 'm-events' && openMailMsg) { var mt = openMailMsg.subject + '\n' + (openMailMsg.text || '').slice(0, 1500); closeSheet(); showPaste(mt); }
     else if (act === 'gmail-go') Gmail.start();
     else if (act === 'gmail-off') { Gmail.forget(); Gmail.markOK(false); MAIL.list = null; showGmail(); }

@@ -197,7 +197,18 @@ main { overflow-x: hidden; max-width: 100vw; }
 .msum p { margin: 0; color: var(--fg); font-family: var(--sans); font-size: 0.92rem; line-height: 1.4; }
 .msum .mfacts { color: var(--cyan); font-family: var(--mono); font-size: 0.82rem; }
 .mnav { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
-.mnav .btn { padding: 0.4rem 0.7rem; }
+.mnav .btn { padding: 0.4rem 0.7rem; min-width: 5.5rem; }
+/* reader: title and summary take a fixed amount of room so nothing below them moves */
+.sheet.mailsheet .mtitle { flex: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sheet.mailsheet .mfrom { flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet.mailsheet .msum { flex: none; }
+.sheet.mailsheet .msum p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sheet.mailsheet .mnav, .sheet.mailsheet .actions { flex: none; }
+.mrow, .nnote { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.ncat { color: var(--amber); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; margin-right: 0.35rem; }
+.catpick { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.catlist { display: flex; flex-direction: column; }
+.catlist div { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
 .mbody { touch-action: pan-y; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--sans); font-size: 0.95rem; line-height: 1.5; color: var(--fg); background: var(--bg); border: 1px solid var(--line); padding: 0.6rem; max-height: 55vh; overflow-y: auto; }
 .mcard { border: 1px solid var(--line); background: var(--raise); padding: 0.9rem; margin-top: 0.8rem; display: flex; flex-direction: column; gap: 0.6rem; }
 /* insights */
@@ -427,6 +438,7 @@ textarea { min-height: 9rem; resize: vertical; }
     <div id="mchips" class="chips" aria-label="Mail filters" hidden></div>
     <div id="ichips" class="chips" aria-label="Insight period" hidden></div>
     <div id="wchips" class="chips" aria-label="Chart range" hidden></div>
+    <div id="ntchips" class="chips" aria-label="Note categories" hidden></div>
     <div id="notice" class="notice" hidden></div>
   </div></header>
   <div id="scroll" class="scroll"><div id="pw"><div id="pull" class="pull"></div>
