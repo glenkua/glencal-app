@@ -373,7 +373,7 @@
       if (sr.daily) {
         var md = '';
         p.forEach(function (x, i) { if (x[key] != null) md += (md ? 'L' : 'M') + X(x, i).toFixed(1) + ' ' + Y(x[key]).toFixed(1); });
-        if (md) o += '<path d="' + md + '" fill="none" stroke="' + ma[1] + '" stroke-width="1.1"/>';
+        if (md) o += '<path d="' + md + '" fill="none" stroke="' + ma[1] + '" stroke-width="0.8"/>';
       } else {
         var lv = sr.lvl[ma[0]];
         if (lv != null && lv >= lo && lv <= hi) o += '<line x1="0" x2="' + pw + '" y1="' + Y(lv).toFixed(1) + '" y2="' + Y(lv).toFixed(1) + '" stroke="' + ma[1] + '" stroke-width="1" stroke-dasharray="4 3"/>';
@@ -381,7 +381,7 @@
     });
     var d = p.map(function (x, i) { return (i ? 'L' : 'M') + X(x, i).toFixed(1) + ' ' + Y(x.c).toFixed(1); }).join('');
     var last = p[p.length - 1], ly = Y(last.c);
-    o += '<path d="' + d + '" fill="none" stroke="' + LINE + '" stroke-width="1.5" stroke-linejoin="round"/>' +
+    o += '<path d="' + d + '" fill="none" stroke="' + LINE + '" stroke-width="1" stroke-linejoin="round"/>' +
       '<rect x="' + pw + '" y="' + (ly - 6.5).toFixed(1) + '" width="' + padR + '" height="13" fill="' + LINE + '"/>' +
       '<text x="' + (pw + 3) + '" y="' + (ly + 3).toFixed(1) + '" fill="#000" font-size="9" font-weight="700" font-family="Menlo,monospace">' + wnum(last.c, dp) + '</text>';
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + o + '</svg>';
@@ -409,7 +409,7 @@
     var cells = '';
     for (var i = 0; i < 4; i++) {
       var k = keys[i];
-      if (!k) { cells += '<div class="wc empty">Tap ▦ beside a<br>security to chart it</div>'; continue; }
+      if (!k) { cells += '<div class="wc empty">Tap ◉ beside a<br>security to chart it</div>'; continue; }
       var q = quote(k), sr = series(k), p = sr && sr.pts;
       var from = WL.range === '1D' && q && q.prev ? q.prev : p && p.length ? p[0].c : null;
       var to = q && q.price != null ? q.price : p && p.length ? p[p.length - 1].c : null;
@@ -424,10 +424,10 @@
       return '<tr><td class="s" data-wrow="' + esc(k) + '">' + esc(k) + (q ? '<span>' + esc(q.name || '') + '</span>' : '') + '</td>' +
         '<td class="px">' + (q && q.price != null ? wnum(q.price, dpFor(q)) : '—') + '</td>' +
         '<td class="' + (f ? f.cls : 'fl') + '">' + (f ? f.ch : '') + '</td>' +
-        '<td class="ct"><button class="wtog' + (on ? ' on' : '') + '" type="button" data-wchart="' + esc(k) + '" aria-pressed="' + on + '" aria-label="Chart ' + esc(k) + '">▦</button></td></tr>';
+        '<td class="ct"><button class="wtog' + (on ? ' on' : '') + '" type="button" data-wchart="' + esc(k) + '" aria-pressed="' + on + '" aria-label="Chart ' + esc(k) + '"></button></td></tr>';
     }).join('');
     $('watch').innerHTML = '<div id="wgrid" class="wgrid"></div>' +
-      '<table class="wl"><thead><tr><th>SECURITY</th><th>LAST PX</th><th>1D %CHG</th><th>CHT</th></tr></thead><tbody>' + rows +
+      '<table class="wl"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"></colgroup><thead><tr><th>SECURITY</th><th>LAST PX</th><th>1D %CHG</th><th>CHT</th></tr></thead><tbody>' + rows +
       '<tr class="wadd"><td colspan="4"><button type="button" data-wadd="1">+ Add security</button></td></tr></tbody></table>' +
       '<p class="wfoot">Delayed prices from ' + esc((MKT && MKT.source) || 'Yahoo Finance') + (MKT && MKT.updated ? ', ' + esc(MKT.updated.slice(11)) + ' SGT' : '') + '. Yields show the change in basis points. ' +
       (WL.dma ? 'DMA: 50-day (blue), 100-day (purple) and 200-day (red) moving averages of daily closes; on 1D and 1W they show as dashed levels. ' : '') + 'Tap a security to move or remove it. Pull down to refresh.</p>';
@@ -614,9 +614,8 @@
         : briefRows(econ, true)) : '<p class="bnone">No tier-1 releases in the next 24 hours.</p>') + '</section>';
 
     // markets
-    var BRIEF_MKT = ['SPX', 'NDX', 'DOW', 'UST 2Y', 'UST 10Y', 'UST 30Y', 'DXY', 'USDSGD', 'USDJPY', 'AUDUSD', 'EURUSD', 'GBPUSD', 'XAUUSD', 'XAGUSD'];
-    var tk = BRIEF_MKT.map(quote).filter(Boolean);
-    html += '<section class="bsec"><h2 class="mbar"><span>MARKETS · VS PREVIOUS CLOSE</span></h2>' + (tk.length ? '<div class="bgrid bmkt">' + tk.map(function (q) {
+    var tk = MKT && MKT.items ? MKT.items.filter(function (q) { return q.tk !== false; }) : [];
+    html += '<section class="bsec"><h2 class="mbar"><span>MARKETS · VS PREVIOUS CLOSE</span></h2>' + (tk.length ? '<div class="bgrid">' + tk.map(function (q) {
       var f = fmtQ(q);
       return '<div class="bq"><b>' + esc(q.k) + '</b><span class="v">' + f.v + ' <span style="color:var(--' + (f.cls === 'up' ? 'up' : f.cls === 'dn' ? 'red' : 'muted') + ')">' + f.ch + '</span></span></div>';
     }).join('') + '</div>' : '<p class="bnone">Loading prices…</p>') + '</section>';
@@ -2254,7 +2253,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f66bd9295c4f</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version cb6bf5784790</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
