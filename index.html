@@ -169,6 +169,11 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .mrow .mt2 { color: var(--cyan); font-size: 0.85rem; }
 .mrow > span:last-child { display: block; min-width: 0; overflow: hidden; }
 .mrow .mf, .mrow .ms, .mrow .mp { display: block; max-width: 100%; }
+.mrow .mline { display: flex; gap: 0.5rem; min-width: 0; align-items: baseline; }
+.mrow .mline .mf { flex: 0 1 auto; max-width: 42%; }
+.mrow .mline .ms { flex: 1 1 0; min-width: 0; color: var(--muted); }
+.mrow:not(.read) .mline .ms { color: var(--fg); }
+.mrow { padding: 0.32rem 0; }
 main { overflow-x: hidden; max-width: 100vw; }
 .mrow .mf { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .mrow .ms { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -378,7 +383,7 @@ textarea { min-height: 9rem; resize: vertical; }
   <main id="fan" hidden></main>
   <main id="tools" hidden></main>
   </div></div>
-  <nav class="tabs" aria-label="Sections"><button id="tab-brief" type="button" data-tab="brief" aria-pressed="true">BRIEF</button><button id="tab-cal" type="button" data-tab="cal" aria-pressed="false">CALENDAR</button><button id="tab-mail" type="button" data-tab="mail" aria-pressed="false">MAIL</button><button id="tab-ins" type="button" data-tab="ins" aria-pressed="false">INSIGHTS</button><button id="tab-notes" type="button" data-tab="notes" aria-pressed="false">NOTES</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button><button id="tab-tools" type="button" data-tab="tools" aria-pressed="false">TOOLS</button></nav>
+  <nav class="tabs" aria-label="Sections"><button id="tab-brief" type="button" data-tab="brief" aria-pressed="true">BRIEF</button><button id="tab-cal" type="button" data-tab="cal" aria-pressed="false">CALENDAR</button><button id="tab-mail" type="button" data-tab="mail" aria-pressed="false">MAIL</button><button id="tab-ins" type="button" data-tab="ins" aria-pressed="false" hidden>INSIGHTS</button><button id="tab-notes" type="button" data-tab="notes" aria-pressed="false">NOTES</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button><button id="tab-tools" type="button" data-tab="tools" aria-pressed="false">TOOLS</button></nav>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button id="undo" class="key go" type="button">UNDO</button></div>
   <div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true"></div></div>
 </div>

@@ -31,9 +31,9 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
-  var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [];
+  var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [], bookSeen = [];
   function persist() {
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800) };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -152,6 +152,8 @@
     notes = data.notes || [];
     txns = data.txns || []; txMeta = data.txMeta || { last: 0, failed: [] };
     mailPins = data.mailPins || [];
+    bookSeen = data.bookSeen || [];
+    txns = []; txMeta = { v: 2, last: 0, failed: [] };   // insights removed: don't keep card data
     if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
     Tools.setTape(calcTape);
     unlocked = true;
@@ -379,7 +381,7 @@
       html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span><span class="n">' + (MAIL.list ? MAIL.list.filter(function (m) { return m.unread; }).length + ' unread' : '') + '</span></h2>' +
         (ml2.length ? '<div class="' + (ml2.length > 3 ? 'bscroll' : '') + '">' + ml2.map(function (m) {
           return '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-bmid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
-            '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></button>';
+            '<span><span class="mline"><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></span></button>';
         }).join('') + '</div>' + (ml2.length > 3 ? '<div class="bmore">↓ scroll for ' + (ml2.length - 3) + ' more</div>' : '')
           : '<p class="bnone">' + (MAIL.loading ? 'Loading…' : 'No new mail.') + '</p>') + '</section>';
     } else {
@@ -626,13 +628,14 @@
   }
   function renderMail2() {
     if (!Gmail.token()) { $('mail').innerHTML = signinCard('Read your Gmail here (and your Hotmail, if you forward it to Gmail).'); return; }
-    var h = '<div class="nmeta">Gmail ' + esc(Gmail.status()) + ' · ' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : 'tap Primary to load')) +
+    var h = '<div class="actions" style="margin-top:0.5rem"><button class="btn" type="button" data-findbook="1">✈ Find bookings → calendar</button></div>' +
+      '<div class="nmeta">Gmail ' + esc(Gmail.status()) + ' · ' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : 'tap Primary to load')) +
       (MAIL.q ? ' · search: ' + esc(MAIL.q) : '') + ' · pull down to refresh</div>';
     var pinned = {}; mailPins.forEach(function (p) { pinned[p.id] = 1; });
     var row = function (m) {
       return '<div class="mwrap"><div class="swipe-pin" aria-hidden="true">' + (pinned[m.id] ? 'UNPIN' : '📌 PIN') + '</div>' +
         '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-mid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
-        '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + (pinned[m.id] ? '📌 ' : '') + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span>' +
+        '<span><span class="mline"><span class="mf' + (m.unread ? ' unread' : '') + '">' + (pinned[m.id] ? '📌 ' : '') + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span>' +
         (m.snippet ? '<span class="mp">' + esc(m.snippet) + '</span>' : '') + '</span></button></div>';
     };
     if (mailPins.length) h += '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + mailPins.length + '</span></h2>' +
@@ -650,6 +653,54 @@
     var y = SC().scrollTop;
     $('mail').innerHTML = h;
     SC().scrollTop = y;
+  }
+  // ---- bookings: confirmations in mail -> calendar entries for you to check ----
+  var BOOK_Q = 'newer_than:90d subject:(booking OR reservation OR reserved OR confirmed OR confirmation OR itinerary OR "e-ticket" OR eticket OR ticket OR tickets OR "your trip" OR "your flight" OR "your stay" OR appointment OR "table for") -category:promotions -category:social';
+  var BOOK_LINE = /(check[- ]?in|check[- ]?out|depart|departure|arriv|flight|boarding|pick[- ]?up|reservation|booked for|booking (?:date|for)|date|time|when|event|show|session|table for|appointment|start)/i;
+  function bookTitle(subj) {
+    var t = subj.replace(/^\s*(re|fwd?|fw):\s*/i, '')
+      .replace(/\b(your\s+)?(booking|reservation|order|appointment)\s+(is\s+)?(has been\s+)?(confirmed|confirmation|received)\b[:\s\-–—!]*/i, '')
+      .replace(/^\s*(confirmed|confirmation|booking confirmation|reservation confirmation)\b[:\s\-–—!]*/i, '').trim();
+    return (t || subj).slice(0, 80);
+  }
+  function findBookings() {
+    if (!Gmail.token()) { renderMail(); return; }
+    openSheet('<h2>Find bookings</h2><p>Looking through the last 90 days of mail for confirmations…</p>');
+    var seen = {}; bookSeen.forEach(function (id) { seen[id] = 1; });
+    Gmail.ids(BOOK_Q, 60).then(function (ids) {
+      ids = ids.filter(function (id) { return !seen[id]; }).slice(0, 40);
+      return Gmail.pool(ids, 6, function (id) { return Gmail.full(id); });
+    }).then(function (msgs) {
+      var drafts = [];
+      (msgs || []).forEach(function (m) {
+        if (!m) return;
+        bookSeen.push(m.id);
+        var lines = [];
+        (m.text || '').split(/\n+/).map(function (l) { return l.trim(); }).filter(function (l) { return l && l.length < 180 && BOOK_LINE.test(l); }).forEach(function (l) {
+          if (/^(time|start(?:s| time)?|from)\b/i.test(l) && lines.length) lines[lines.length - 1] += ' ' + l; else lines.push(l);
+        });
+        lines = lines.slice(0, 15);
+        var found = GC.parseText(lines.join('\n'), new Date()).filter(function (d) { return d.date && d.date >= todayISO; });
+        var dates = {}, title = bookTitle(m.subject), n = 0;
+        found.forEach(function (d) {
+          if (dates[d.date] || n >= 2) return;
+          dates[d.date] = 1;
+          drafts.push({ title: title + (n ? ' (ends)' : ''), date: d.date, time: d.time, place: d.place || '', note: d.src.slice(0, 120),
+            src: 'From email: ' + m.subject + ' · ' + m.from, cat: GC.inferCat(m.subject + ' ' + title) });
+          n++;
+        });
+      });
+      persist();
+      if (!drafts.length) {
+        openSheet('<h2>Find bookings</h2><p>No new upcoming bookings found in the last 90 days.</p><p class="small">Checked ' + (msgs || []).filter(Boolean).length + ' new emails. Emails already checked aren\'t looked at again.</p>' +
+          '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
+        return;
+      }
+      drafts.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+      showConfirm(drafts, 'Found in your mail. Remove anything that isn\'t right, then save.');
+    }, function (e) {
+      openSheet('<h2>Find bookings</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>');
+    });
   }
   var openMailMsg = null;
   function openMail(id) {
@@ -898,7 +949,7 @@
   }
   $('mail').addEventListener('pointerup', mEnd);
   $('mail').addEventListener('pointercancel', mEnd);
-  $('mail').addEventListener('click', function (e) { if (mJust) return; if (e.target.closest('[data-older]')) { loadOlder(); return; } var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
+  $('mail').addEventListener('click', function (e) { if (mJust) return; if (e.target.closest('[data-findbook]')) { findBookings(); return; } if (e.target.closest('[data-older]')) { loadOlder(); return; } var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
   $('ins').addEventListener('click', function (e) {
     var tb = e.target.closest('[data-tx]');
     if (tb) {
@@ -1869,7 +1920,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 95695fd38b9c</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 02a9598d5b57</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
