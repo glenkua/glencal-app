@@ -639,8 +639,7 @@
   }
   function renderMail2() {
     if (!Gmail.token()) { $('mail').innerHTML = signinCard('Read your Gmail here (and your Hotmail, if you forward it to Gmail).'); return; }
-    var h = '<div class="nmeta">Gmail ' + esc(Gmail.status()) + ' · ' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : 'tap Primary to load')) +
-      (MAIL.q ? ' · search: ' + esc(MAIL.q) : '') + ' · pull down to refresh</div>';
+    var h = (MAIL.loading || MAIL.err) ? '<div class="nmeta">' + (MAIL.loading ? 'Loading…' : '<span class="err">' + esc(MAIL.err) + '</span>') + '</div>' : '';
     var pinned = {}; mailPins.forEach(function (p) { pinned[p.id] = 1; });
     var row = function (m) {
       return '<div class="mwrap"><div class="swipe-pin" aria-hidden="true">' + (pinned[m.id] ? 'UNPIN' : '📌 PIN') + '</div>' +
@@ -990,7 +989,7 @@
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
     $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt || ml || ins; $('cmdrow').hidden = tl || br || ins;
     $('ask').hidden = true;   // assistant switched off for now $('jump').hidden = true;   // TODAY button removed $('add').hidden = !(cal || br || nt);
-    $('q').value = '';
+    $('q').value = ''; $('qclear').hidden = true;
     if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
     else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); SC().scrollTop = 0; }
     else if (tl) { $('tchips').innerHTML = Tools.chips(); Tools.draw(); SC().scrollTop = 0; }
@@ -1056,6 +1055,14 @@
     if (g.getAttribute('data-act') === 'ins-reset') { txns = []; txMeta = { v: 2, last: 0, failed: [] }; persist(); INS.msg = 'Cleared. Tap Scan mail.'; renderInsights(); return; } if (g.getAttribute('data-act') === 'gmail-go') Gmail.start(); if (g.getAttribute('data-act') === 'ins-scan') scanTxns(); });
   $('mchips').addEventListener('click', function (e) { var b = e.target.closest('[data-m]'); if (!b) return; MAIL.filter = b.getAttribute('data-m'); renderMailChips(); loadMail(); SC().scrollTop = 0; });
   $('ichips').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (!b) return; INS.period = b.getAttribute('data-i'); renderInsChips(); renderInsights(); SC().scrollTop = 0; });
+  function syncClear() { $('qclear').hidden = !$('q').value; }
+  $('q').addEventListener('input', syncClear);
+  $('qclear').addEventListener('click', function (e) {
+    e.preventDefault();
+    $('q').value = ''; syncClear();
+    if (tab === 'mail') { if (MAIL.q) { MAIL.q = ''; loadMail(); } }
+    else $('q').dispatchEvent(new Event('input'));
+  });
   $('q').addEventListener('keydown', function (e) { if (tab === 'mail' && e.key === 'Enter') { MAIL.q = $('q').value.trim(); loadMail(); $('q').blur(); } });
   // short swipe shows DELETE; a long swipe (past 60% of the width) deletes straight away. Undo for 6 seconds.
   var nsw = null, nOpen = null, nJust = false, noteUndo = null;
@@ -2015,7 +2022,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 054edc11c237</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version ef886c0b40b4</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
