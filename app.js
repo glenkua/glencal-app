@@ -370,7 +370,7 @@
     if (typeof DAILY !== 'undefined' && DAILY.length) {   // one item a day, the same all day
       var dayNo = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(2026, 0, 1)) / 864e5);
       var it = DAILY[((dayNo * 37) % DAILY.length + DAILY.length) % DAILY.length];   // stepping by 37 mixes the topics
-      var KIND = { m: 'MARKETS', h: 'HABIT', t: 'DID YOU KNOW', q: 'QUOTE' };
+      var KIND = { m: 'MONEY', h: 'HABIT', t: 'DID YOU KNOW', q: 'QUOTE' };
       html += '<div class="bdaily' + (it[0] === 'q' ? ' q' : '') + '"><span class="dk">' + KIND[it[0]] + '</span>' +
         (it[0] === 'q' ? '“' + esc(it[1]) + '” <span class="ds">— ' + esc(it[2]) + '</span>' : esc(it[1])) + '</div>';
     }
@@ -2039,7 +2039,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 560dd9996b7a</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version e67a79e71811</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
