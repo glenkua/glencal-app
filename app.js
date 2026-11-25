@@ -297,8 +297,13 @@
     while (WL.views.length < 3) WL.views.push([]);
     if (!(WL.view >= 0 && WL.view < 3)) WL.view = 0;
     if (!WRANGES.some(function (r) { return r[0] === WL.range; })) WL.range = '1M';
+    if (!WL.vranges) WL.vranges = [WL.range, WL.range, WL.range];
+    WL.vranges = WL.vranges.map(function (r) { return WRANGES.some(function (x) { return x[0] === r; }) ? r : '1M'; });
+    if (!WL.vnames) WL.vnames = ['', '', ''];
+    WL.range = WL.vranges[WL.view];
   }
   function vch() { return WL.views[WL.view]; }
+  function vname(i) { return (WL.vnames && WL.vnames[i]) || 'View ' + (i + 1); }
   var WL = JSON.parse(JSON.stringify(WL_DEFAULT));
   var WRANGES = [['1D', 'hist-1d'], ['1M', 'hist-2y', 31], ['3M', 'hist-2y', 92], ['6M', 'hist-2y', 183], ['1Y', 'hist-2y', 366], ['5Y', 'hist-5y', 1827, 5]];   // last: weekly points (5 trading days each)
   var MAS = [[50, '#5fd0e8'], [100, '#c792ff'], [200, '#ff6b6b']];   // 50 / 100 / 200-day moving averages
@@ -323,7 +328,7 @@
   }
   function renderWatchChips() {
     $('wchips').innerHTML = '<div class="wvrow">' + [0, 1, 2].map(function (i) {
-      return '<button class="chip" type="button" data-wv="' + i + '" aria-pressed="' + (WL.view === i) + '">VIEW ' + (i + 1) + '</button>';
+      return '<button class="chip" type="button" data-wv="' + i + '" aria-pressed="' + (WL.view === i) + '">' + esc(vname(i)) + '</button>';
     }).join('') + '</div><div class="wrrow">' + WRANGES.map(function (r) {
       return '<button class="chip" type="button" data-wr="' + r[0] + '" aria-pressed="' + (WL.range === r[0]) + '">' + r[0] + '</button>';
     }).join('') + '<button class="chip" type="button" data-wdma="1" aria-pressed="' + !!WL.dma + '">DMA</button></div>';
@@ -499,12 +504,17 @@
   });
   $('wchips').addEventListener('click', function (e) {
     var v = e.target.closest('[data-wv]');
-    if (v) { WL.view = Number(v.getAttribute('data-wv')); persist(); renderWatchChips(); renderWatch(); return; }
+    if (v) { WL.view = Number(v.getAttribute('data-wv')); WL.range = WL.vranges[WL.view]; persist(); renderWatchChips(); renderWatch(); return; }
     var b = e.target.closest('[data-wr]');
-    if (b) { WL.range = b.getAttribute('data-wr'); persist(); renderWatchChips(); drawCharts(); return; }
+    if (b) { WL.range = WL.vranges[WL.view] = b.getAttribute('data-wr'); persist(); renderWatchChips(); drawCharts(); return; }
     if (e.target.closest('[data-wdma]')) { WL.dma = !WL.dma; persist(); renderWatchChips(); renderWatch(); }
   });
   window.addEventListener('resize', function () { if (tab === 'watch') drawCharts(); });
+  $('wren').addEventListener('click', function () {
+    var n = window.prompt('Name for ' + vname(WL.view), WL.vnames[WL.view] || '');
+    if (n === null) return;
+    WL.vnames[WL.view] = n.trim().slice(0, 14); persist(); renderWatchChips();
+  });
   $('tick').addEventListener('click', showMarkets);
   loadMarkets();
   setInterval(loadMarkets, 2 * 60000);
@@ -520,13 +530,22 @@
   // =====================================================================
   var tab = 'brief', NEWS = null;
   var newsHidden = {};
-  (prefs('newsHidden') || '').split(',').forEach(function (k) { if (k) newsHidden[k] = 1; });
-  function newsTags(n) {
-    var t = [];
-    if (n.cb) t.push('cb');
-    if (n.sg) t.push('sg');
-    (n.ccy || []).forEach(function (c) { if (t.indexOf(c) < 0) t.push(c); });
-    return t.length ? t : ['other'];
+  (prefs('newsHidden2') || '').split(',').forEach(function (k) { if (k) newsHidden[k] = 1; });   // new categories: start with everything on
+  var NEWS_RX = {
+    sg: /\b(singapore|singaporean|mas|sgd|s\$|sti|straits times index|dbs|ocbc|uob|singtel|temasek|gic|changi|hdb|cpf)\b/i,
+    fx: /\b(fx|forex|currenc(y|ies)|exchange rates?|dollar|greenback|dxy|euro|yen|sterling|pound|franc|yuan|renminbi|cnh|rupee|won|ringgit|rupiah|baht|peso|aussie|kiwi|loonie|intervention|devalu\w*|carry trade|[A-Z]{3}\/[A-Z]{3})\b/i,
+    eq: /\b(stocks?|shares?|equit(y|ies)|s&p|nasdaq|dow|nikkei|hang seng|ftse|dax|stoxx|kospi|index futures|earnings|profit|revenue|ipo|listing|buyback|dividend|bear market|bull market|market cap|valuation|wall street|chipmakers?|nvidia|apple|microsoft|tesla|alphabet|amazon|meta)\b/i,
+    fi: /\b(bonds?|yields?|treasur(y|ies)|gilts?|bunds?|jgbs?|notes? auction|auction|debt|credit|spreads?|coupon|duration|sovereign|issuance|rating|downgrade|upgrade|default|rates? (cut|hike|decision)|cuts? rates|hikes? rates|basis points?|bps?|sofr|sora|repo|qt|qe|balance sheet|curve)\b/i,
+    ec: /\b(inflation|cpi|pce|ppi|gdp|growth|recession|jobs?|payrolls?|unemployment|jobless|wages?|pmi|retail sales|industrial production|exports?|imports?|trade (deficit|surplus|balance)|tariffs?|consumer (confidence|sentiment|spending)|housing starts|home sales|house prices|home prices|holiday spending|cost of living|prices|economy|economic|economists?|fed|fomc|powell|ecb|lagarde|boj|ueda|boe|bailey|rba|rbnz|pboc|central banks?|policy rate|monetary|fiscal|budget|deficit)\b/i
+  };
+  function newsTags(n) {   // a headline can sit in more than one category
+    var t = [], h = n.title || '';
+    if (n.sg || NEWS_RX.sg.test(h)) t.push('sg');
+    if (NEWS_RX.fx.test(h)) t.push('fx');
+    if (n.kind === 'equity' || NEWS_RX.eq.test(h)) t.push('eq');
+    if (n.cb || NEWS_RX.fi.test(h)) t.push('fi');
+    if (n.cb || NEWS_RX.ec.test(h)) t.push('ec');
+    return t.length ? t : ['gen'];
   }
   var lastSeen = prefs('newsSeen') || '';
   function newsURL() { var u = mktURL(); return u ? u.replace('/markets.json', '/news.json') : null; }
@@ -535,7 +554,7 @@
     return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { if (d && d.items) { NEWS = d; if (tab === 'news') renderNews(); if (tab === 'brief') renderBrief(); } }).catch(function () {});
   }
-  var NEWS_CHIPS = [['all', 'All'], ['cb', '★ Central banks'], ['sg', '🇸🇬 SG'], ['other', 'General'], ['USD', 'USD'], ['EUR', 'EUR'], ['JPY', 'JPY'], ['GBP', 'GBP'], ['AUD', 'AUD'], ['NZD', 'NZD'], ['SGD', 'SGD']];
+  var NEWS_CHIPS = [['all', 'All'], ['sg', 'SG'], ['fx', 'FX'], ['eq', 'Equities'], ['fi', 'Fixed Income'], ['ec', 'Economics'], ['gen', 'General']];
   function renderNewsChips() {
     $('nchips').innerHTML = NEWS_CHIPS.map(function (c) {
       var on = c[0] === 'all' ? !Object.keys(newsHidden).length : !newsHidden[c[0]];
@@ -1358,7 +1377,7 @@
     $('tab-mail').setAttribute('aria-pressed', ml); $('mail').hidden = !ml; $('mchips').hidden = !ml;
     $('tab-ins').setAttribute('aria-pressed', ins); $('ins').hidden = !ins; $('ichips').hidden = !ins;
     $('tab-notes').setAttribute('aria-pressed', nt); $('notes').hidden = !nt; $('ntchips').hidden = !nt;
-    $('tab-watch').setAttribute('aria-pressed', wt); $('watch').hidden = !wt; $('wchips').hidden = !wt;
+    $('tab-watch').setAttribute('aria-pressed', wt); $('watch').hidden = !wt; $('wchips').hidden = !wt; $('wren').hidden = !wt;
     $('tab-brief').setAttribute('aria-pressed', br); $('brief').hidden = !br;
     $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
@@ -1526,7 +1545,7 @@
       if (Object.keys(newsHidden).length) newsHidden = {};
       else NEWS_CHIPS.forEach(function (c) { if (c[0] !== 'all') newsHidden[c[0]] = 1; });
     } else if (newsHidden[k]) delete newsHidden[k]; else newsHidden[k] = 1;
-    prefs('newsHidden', Object.keys(newsHidden).join(','));
+    prefs('newsHidden2', Object.keys(newsHidden).join(','));
     renderNewsChips(); renderNews(); SC().scrollTop = 0;
   });
   setInterval(function () { if (tab === 'news') loadNews(); if (tab === 'fan') loadFantasy(); }, 2 * 60000);
@@ -2403,7 +2422,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f6aa3a77a9be</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 070df409b2ec</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
