@@ -157,7 +157,10 @@
     document.body.classList.remove('covered');
     setClock();
     refresh();
-    setTimeout(function () { setTab('brief'); }, 0);
+    setTimeout(function () {
+      setTab('brief');
+      if (location.hash === '#gmail') { history.replaceState(null, '', location.pathname); showGmail(); }
+    }, 0);
   }
 
   function lockNow() {
@@ -1260,6 +1263,23 @@
       }).then(function (sub) { writeDigest(); showNotify('', JSON.stringify(sub)); });
     }).catch(function (e) { showNotify('Could not turn on: ' + (e.message || e)); });
   }
+  // ---- Gmail test: sign in and list the latest subjects ----
+  function showGmail() {
+    if (!Gmail.token()) {
+      openSheet('<h2>Gmail (test)</h2><p>Sign in with Google to let GlenCal read your Gmail (read-only). Your emails go straight between this iPhone and Google.</p>' +
+        '<p class="small">This is a test: it lists your 10 latest emails to check that sign-in comes back into the app. Google will warn that the app is unverified, because it\'s your own app in testing. Tap <b>Continue</b>.</p>' +
+        '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button><button class="btn primary" type="button" data-act="gmail-go">Connect Gmail</button></div>');
+      return;
+    }
+    openSheet('<h2>Gmail (test)</h2><p>Loading your latest emails…</p>');
+    Gmail.latest(10).then(function (list) {
+      openSheet('<h2>Gmail ✓ connected</h2><p class="small">Sign-in worked inside the app. Your 10 latest emails:</p>' +
+        list.map(function (m) { return '<div class="row"><b>' + esc(m.subject) + '</b><span class="small">' + esc(m.from) + ' · ' + esc(m.date.replace(/\s\(.*\)$/, '').slice(0, 25)) + '</span></div>'; }).join('') +
+        '<div class="actions"><button class="btn grow" type="button" data-act="gmail-off">Disconnect</button><button class="btn primary" type="button" data-act="close">Done</button></div>');
+    }, function (e) {
+      openSheet('<h2>Gmail (test)</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn grow" type="button" data-act="close">Close</button><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>');
+    });
+  }
   function showFinance(id) {
     var f = financeItems().filter(function (x) { return x.id === id; })[0];
     if (!f) return;
@@ -1517,6 +1537,7 @@
     openSheet('<h2>Menu</h2><div class="menu">' +
       (prefs('aiReady') ? '<button class="btn" type="button" data-act="ai-free">Remove AI model (frees about 1 GB)</button>' : '') +
       '<button class="btn" type="button" data-act="rules">Bills &amp; recurring</button>' +
+      '<button class="btn" type="button" data-act="gmail">Gmail (test)</button>' +
       '<button class="btn" type="button" data-act="notify">Evening notification</button>' +
       '<button class="btn" type="button" data-act="hol-toggle">' + (holidaysOn() ? 'Hide' : 'Show') + ' Singapore holidays</button>' +
       '<button class="btn" type="button" data-act="import">Import entries</button>' +
@@ -1525,7 +1546,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c869d78a5638</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 55022edbd8d1</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1709,6 +1730,9 @@
     else if (act === 'ask-discard') { pending = null; askHistory.push({ q: '(discard)', a: 'Discarded.' }); showAsk(); }
     else if (act === 'import') showImport();
     else if (act === 'rules') showRules();
+    else if (act === 'gmail') showGmail();
+    else if (act === 'gmail-go') Gmail.start();
+    else if (act === 'gmail-off') { Gmail.forget(); showGmail(); }
     else if (act === 'sv-save') {
       if (!pendingSum) return;
       var nm = $('sv-name').value.trim() || pendingSum.title, ds = $('sv-desc').value.trim(), nowIso = new Date().toISOString();
