@@ -628,8 +628,7 @@
   }
   function renderMail2() {
     if (!Gmail.token()) { $('mail').innerHTML = signinCard('Read your Gmail here (and your Hotmail, if you forward it to Gmail).'); return; }
-    var h = '<div class="actions" style="margin-top:0.5rem"><button class="btn" type="button" data-findbook="1">✈ Find bookings → calendar</button></div>' +
-      '<div class="nmeta">Gmail ' + esc(Gmail.status()) + ' · ' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : 'tap Primary to load')) +
+    var h = '<div class="nmeta">Gmail ' + esc(Gmail.status()) + ' · ' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : 'tap Primary to load')) +
       (MAIL.q ? ' · search: ' + esc(MAIL.q) : '') + ' · pull down to refresh</div>';
     var pinned = {}; mailPins.forEach(function (p) { pinned[p.id] = 1; });
     var row = function (m) {
@@ -1920,7 +1919,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 02a9598d5b57</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 3537126f2ef5</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
