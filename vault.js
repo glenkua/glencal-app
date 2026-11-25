@@ -101,9 +101,17 @@ var Vault = (function () {
     return { credId: credId, salt: salt, secret: secret };
   }
 
+  // Earlier copies: before each save, the previous copy is kept if the newest kept one is over 30 minutes old.
+  // Up to 20 copies (roughly the last few days of use), encrypted with the same key.
+  var HIST_GAP = 30 * 60000, HIST_MAX = 20;
   async function writeData(items) {
     var box = await seal(dek, enc.encode(JSON.stringify(items)));
-    rec.data = box;
+    if (rec.data) {
+      rec.hist = rec.hist || [];
+      var last = rec.hist[rec.hist.length - 1];
+      if (!last || Date.now() - last.at > HIST_GAP) { rec.hist.push({ at: rec.savedAt || Date.now(), box: rec.data }); if (rec.hist.length > HIST_MAX) rec.hist.shift(); }
+    }
+    rec.data = box; rec.savedAt = Date.now();
     await idbPut(KEY, rec);
   }
 
@@ -199,6 +207,15 @@ var Vault = (function () {
     writeDigest: async function (obj) {
       if (!dek) return;
       await idbPut('digest', await seal(dek, enc.encode(JSON.stringify(obj))));
+    },
+    // earlier copies, newest first: [{ at, data }]
+    history: async function () {
+      if (!dek) throw new Error('LOCKED');
+      var out = [];
+      for (var i = (rec.hist || []).length - 1; i >= 0; i--) {
+        try { out.push({ at: rec.hist[i].at, data: JSON.parse(dec.decode(await open(dek, rec.hist[i].box))) }); } catch (e) {}
+      }
+      return out;
     },
     lock: function () { dek = null; }
   };

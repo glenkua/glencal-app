@@ -33,8 +33,18 @@
   var saving = Promise.resolve();
   var NOTE_CATS = ['Impt', 'Work', 'Finance', 'Housing', 'Fitness', 'Car', 'Travel', 'Personal'], noteCats = NOTE_CATS.slice(), noteFilter = 'all';
   var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [], bookSeen = [], mailSeen = [], seenSet = {};
+  var loaded = false, lastCounts = null, restoreList = [];
+  function counts(d) { return { items: (d.items || []).length, notes: (d.notes || []).filter(function (n) { return n && (n.title || n.body); }).length, pins: (d.mailPins || []).length }; }
   function persist() {
+    if (!loaded) return;   // nothing is saved until your data has finished loading
     var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800), mailSeen: mailSeen.slice(-1500), watch: WL, noteCats: noteCats };
+    var c = counts(snap), p = lastCounts;
+    // Safety net: a save that would empty a section that had 3 or more entries in one go is held back.
+    if (p && ['items', 'notes', 'pins'].some(function (k) { return p[k] >= 3 && c[k] === 0; }) && !persist.allowWipe) {
+      notice('Saving paused: it would have cleared a whole section. Reopen the app; if anything is missing, use ··· → Restore an earlier copy.');
+      return;
+    }
+    persist.allowWipe = false; lastCounts = c;
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -160,6 +170,7 @@
     txns = []; txMeta = { v: 2, last: 0, failed: [] };   // insights removed: don't keep card data
     if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
     Tools.setTape(calcTape);
+    lastCounts = counts(data); loaded = true;
     unlocked = true;
     todayISO = GC.iso(new Date());
     $('lock').hidden = true;
@@ -174,7 +185,7 @@
 
   function lockNow() {
     Vault.lock();
-    unlocked = false;
+    unlocked = false; loaded = false;
     items = [];
     closeSheet();
     $('list').innerHTML = '';
@@ -817,6 +828,13 @@
       notes.forEach(function (n) { if (n.cat === c) n.cat = ''; });
       if (noteFilter === c) noteFilter = 'all';
       persist(); catSheet(); if (tab === 'notes') renderNotes(); return;
+    }
+    b = e.target.closest('[data-restore]');
+    if (b) {
+      var pick = restoreList[Number(b.getAttribute('data-restore'))]; if (!pick) return;
+      persist.allowWipe = true; persist();   // keep the current copy in the history first
+      saving.then(function () { closeSheet(); enterApp(pick.data); persist.allowWipe = true; persist(); flashToast('Restored'); });
+      return;
     }
     b = e.target.closest('[data-mact]');
     if (b) {
@@ -2418,11 +2436,12 @@
       '<button class="btn" type="button" data-act="hol-toggle">' + (holidaysOn() ? 'Hide' : 'Show') + ' Singapore holidays</button>' +
       '<button class="btn" type="button" data-act="import">Import entries</button>' +
       '<button class="btn" type="button" data-act="export">Export backup</button>' +
+      '<button class="btn" type="button" data-act="restore">Restore an earlier copy</button>' +
       (Vault.method() === 'device'
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version d8ec8b7cbe1e</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 2c673601dacd</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2611,6 +2630,19 @@
     else if (act === 'm-next') mailStep(1);
     else if (act === 'm-note' && openMailMsg) mailToNoteSheet(openMailMsg);
     else if (act === 'mn-save') saveMailNote();
+    else if (act === 'restore') {
+      openSheet('<h2>Restore an earlier copy</h2><p>Loading…</p>');
+      Vault.history().then(function (h) {
+        restoreList = h;
+        openSheet('<h2>Restore an earlier copy</h2><p class="small">The app keeps up to 20 earlier copies on this iPhone, at least 30 minutes apart. Restoring replaces what you have now; your current copy is kept in this list too.</p>' +
+          (h.length ? '<div class="catlist">' + h.map(function (x, i) {
+            var c = counts(x.data), d = new Date(x.at);
+            return '<div><span>' + d.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) +
+              '<br><span class="small">' + c.items + ' entries · ' + c.notes + ' notes · ' + c.pins + ' pinned mail</span></span><button class="btn" type="button" data-restore="' + i + '">Restore</button></div>';
+          }).join('') + '</div>' : '<p>No earlier copies yet. They build up as you use the app.</p>') +
+          '<div class="actions"><button class="btn primary" type="button" data-act="close">Close</button></div>');
+      }, function (e) { openSheet('<h2>Restore</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="close">Close</button></div>'); });
+    }
     else if (act === 'nc-add') { var nn = addNoteCat($('nc-new').value); if (nn) { catSheet(); if (tab === 'notes') renderNotes(); } }
     else if (act === 'm-events' && openMailMsg) { var mt = openMailMsg.subject + '\n' + (openMailMsg.text || '').slice(0, 1500); closeSheet(); showPaste(mt); }
     else if (act === 'gmail-go') Gmail.start();
