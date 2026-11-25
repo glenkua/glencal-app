@@ -712,6 +712,35 @@
       openSheet('<h2>Find bookings</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>');
     });
   }
+  // ---- quick summary: the most informative sentences plus key facts, worked out on the phone (no AI, nothing sent) ----
+  var SUM_NOISE = /(unsubscribe|view (?:this|it) in (?:your )?browser|privacy (?:policy|notice)|all rights reserved|©|copyright|do not reply|no-?reply|this (?:e-?mail|message) (?:was|is) (?:sent|intended)|manage (?:your )?(?:preferences|subscription)|terms (?:and|&) conditions|click here|download (?:the|our) app|follow us|sent from my|confidential)/i;
+  var SUM_GREET = /^(dear|hi|hello|hey|good (?:morning|afternoon|evening)|greetings|thank you for|thanks for|we hope|hope you|regards|best|cheers|warm regards|kind regards|sincerely|yours)\b/i;
+  var SUM_USEFUL = /(due|deadline|by \d|confirm|confirmed|please|required|action|reminder|booked|booking|reservation|cancel|approved|declined|payment|paid|amount|invoice|statement|delivered|delivery|shipped|ready|reference|meeting|call|schedule|reschedul|interview|offer|update|change|expire|renew|password|verify|ticket|flight|check-in|order)/i;
+  function mailSummary(m) {
+    var raw = (m.text || m.snippet || '');
+    // drop quoted replies and anything after a signature line
+    var cut = raw.search(/\n\s*(?:on .{5,80} wrote:|-----\s*original message|from:\s.+\nsent:|--\s*\n|sent from my )/i);
+    if (cut > 0) raw = raw.slice(0, cut);
+    var lines = raw.split(/\n+/).map(function (l) { return l.replace(/^[>\s]+/, '').trim(); }).filter(function (l) { return l && !SUM_NOISE.test(l) && !(SUM_GREET.test(l) && l.length < 45); });
+    var sents = [];
+    lines.join(' ').replace(/\s+/g, ' ').split(/(?<=[.!?])\s+(?=[A-Z0-9"'(])/).forEach(function (x, i) {
+      x = x.trim(); if (x.length < 25 || x.length > 260 || SUM_GREET.test(x)) return;
+      var sc = (SUM_USEFUL.test(x) ? 3 : 0) + (/(SGD|S\$|USD|\$)\s?[\d,]+/.test(x) ? 2 : 0) + (/\b\d{1,2}\s?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2}|\d{1,2}(?::|\.)\d{2}\s?(?:am|pm)?/i.test(x) ? 2 : 0) + Math.max(0, 2 - i * 0.3);
+      sents.push({ t: x, s: sc, i: i });
+    });
+    var top = sents.slice().sort(function (a, b) { return b.s - a.s; }).slice(0, 2).sort(function (a, b) { return a.i - b.i; })
+      .map(function (x) { return x.t.length > 170 ? x.t.slice(0, 167).replace(/\s+\S*$/, '') + '…' : x.t; });
+    if (!top.length && m.snippet) top = [m.snippet.slice(0, 170)];
+    // key facts
+    var body = raw.replace(/\s+/g, ' '), facts = [], seen = {};
+    var add = function (f) { var k = f.toLowerCase(); if (!seen[k] && facts.length < 5) { seen[k] = 1; facts.push(f); } };
+    (body.match(/(?:SGD|S\$|USD|US\$|EUR|GBP|JPY|AUD|MYR|HKD)\s?[\d,]+(?:\.\d{2})?|\$\s?[\d,]+\.\d{2}/gi) || []).slice(0, 2).forEach(function (a) { add(a.replace(/\s+/, ' ')); });
+    (body.match(/\b\d{1,2}\s(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*(?:\s\d{4})?\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s\d{1,2}(?:,?\s\d{4})?\b/gi) || []).slice(0, 2).forEach(add);
+    (body.match(/\b\d{1,2}(?::|\.)\d{2}\s?(?:am|pm)\b|\b\d{1,2}\s?(?:am|pm)\b/gi) || []).slice(0, 1).forEach(add);
+    var ref = /\b(?:ref(?:erence)?|booking|order|confirmation|reservation|ticket|case|invoice)\s*(?:no\.?|number|#|code|id)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{4,})\b/i.exec(body);
+    if (ref && /\d/.test(ref[1])) add('Ref ' + ref[1]);
+    return { lines: top, facts: facts };
+  }
   var openMailMsg = null, mailNavId = null;
   function mailOrder() {   // same order as on screen: pinned first, then the list
     var seen = {}, out = [];
@@ -736,6 +765,12 @@
       var d = new Date(m.date), l = dLabel(GC.iso(d));
       openSheet('<h2 style="text-transform:none;letter-spacing:0">' + esc(m.subject) + '</h2>' +
         '<p class="small">' + esc(m.from) + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + '</p>' +
+        (function () {
+          var sm = mailSummary(m);
+          if (!sm.lines.length && !sm.facts.length) return '';
+          return '<div class="msum"><span class="small">QUICK SUMMARY</span>' + sm.lines.map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('') +
+            (sm.facts.length ? '<p class="mfacts">' + sm.facts.map(esc).join(' · ') + '</p>' : '') + '</div>';
+        })() +
         '<div class="mnav"><button class="btn" type="button" data-act="m-prev"' + (pos <= 0 ? ' disabled' : '') + '>‹ Newer</button>' +
           '<span class="small">' + (pos >= 0 ? (pos + 1) + ' / ' + order.length + (MAIL.next ? '+' : '') : '') + ' · swipe ‹ ›</span>' +
           '<button class="btn" type="button" data-act="m-next"' + (pos < 0 || (pos >= order.length - 1 && !MAIL.next) ? ' disabled' : '') + '>Older ›</button></div>' +
@@ -1949,7 +1984,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version ffcdd3b63c3d</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version df95ce75a41b</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
