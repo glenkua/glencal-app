@@ -3,7 +3,7 @@ Run by .github/workflows/markets.yml about every 10 minutes; files are pushed to
   markets.json   last price and previous close for every instrument
   hist-1d.json   today, 5-minute points        (every run)
   hist-1w.json   past 5 days, hourly points     (refreshed when older than 30 minutes)
-  hist-1y.json   past year, daily closes        (refreshed when older than 3 hours)"""
+  hist-2y.json   past two years, daily closes   (refreshed when older than 3 hours; 200-day averages need the extra year)"""
 import json, os, sys, time, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -92,10 +92,10 @@ def refresh(name, max_age, rng, interval):
     return out
 
 h1w = refresh("hist-1w.json", 30 * 60, "5d", "60m")
-h1y = refresh("hist-1y.json", 3 * 3600, "1y", "1d")
+h1y = refresh("hist-2y.json", 3 * 3600, "2y", "1d")
 stamp = datetime.now(SGT).strftime("%Y-%m-%d %H:%M")
 json.dump({"updated": stamp, "source": "Yahoo Finance (delayed)", "items": items}, open("markets.json", "w", encoding="utf-8"), indent=0)
 json.dump({"at": now, "updated": stamp, "s": h1d}, open("hist-1d.json", "w", encoding="utf-8"), separators=(",", ":"))
 json.dump(h1w, open("hist-1w.json", "w", encoding="utf-8"), separators=(",", ":"))
-json.dump(h1y, open("hist-1y.json", "w", encoding="utf-8"), separators=(",", ":"))
-print(len(items), "quotes;", len(h1d), "1D;", len(h1w.get("s", {})), "1W;", len(h1y.get("s", {})), "1Y")
+json.dump(h1y, open("hist-2y.json", "w", encoding="utf-8"), separators=(",", ":"))
+print(len(items), "quotes;", len(h1d), "1D;", len(h1w.get("s", {})), "1W;", len(h1y.get("s", {})), "2Y")

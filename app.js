@@ -290,7 +290,9 @@
   // =====================================================================
   var WL_DEFAULT = { list: ['USDSGD', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'SPX', 'NDX', 'DOW', 'UST 2Y', 'UST 5Y', 'UST 10Y', 'UST 30Y'], charts: ['USDSGD', 'USDJPY', 'SPX', 'UST 10Y'], range: '1M', dma: false };
   var WL = JSON.parse(JSON.stringify(WL_DEFAULT));
-  var WRANGES = [['1D', 'hist-1d'], ['1W', 'hist-1w'], ['1M', 'hist-1y', 31], ['3M', 'hist-1y', 92], ['6M', 'hist-1y', 183], ['1Y', 'hist-1y', 366]];
+  var WRANGES = [['1D', 'hist-1d'], ['1W', 'hist-1w'], ['1M', 'hist-2y', 31], ['3M', 'hist-2y', 92], ['6M', 'hist-2y', 183], ['1Y', 'hist-2y', 366]];
+  var MAS = [[50, '#5fd0e8'], [100, '#c792ff'], [200, '#ff6b6b']];   // 50 / 100 / 200-day moving averages
+  var LINE = '#f2f2f2';                                               // price line: white, so it stands apart from the amber UI
   var HIST = {};   // file -> { at, data, loading }
   function quote(k) { return MKT && MKT.items ? MKT.items.filter(function (q) { return q.k === k; })[0] : null; }
   function dpFor(q, v) {
@@ -299,7 +301,7 @@
     if (q.kind === 'fx') { var a = Math.abs(v != null ? v : q.price); return a >= 5000 ? 0 : a >= 20 ? 2 : 4; }
     return 2;
   }
-  function num(v, dp) { return Number(v).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp }); }
+  function wnum(v, dp) { return Number(v).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp }); }
   function loadHist(file) {
     var h = HIST[file] || (HIST[file] = {});
     var url = mktURL();
@@ -314,33 +316,49 @@
       return '<button class="chip" type="button" data-wr="' + r[0] + '" aria-pressed="' + (WL.range === r[0]) + '">' + r[0] + '</button>';
     }).join('') + '<button class="chip" type="button" data-wdma="1" aria-pressed="' + !!WL.dma + '">DMA</button>';
   }
-  function series(k) {   // [{t, c}] for the chosen range, plus the moving average over the same points
+  function unpack(s) { return s ? s.m.map(function (m, i) { return { t: (s.t0 + m * 60) * 1000, c: s.c[i] }; }) : null; }
+  function dailyWithMA(k) {   // daily closes with 50/100/200-day averages
+    var h = HIST['hist-2y'], d = unpack(h && h.data && h.data.s[k]);
+    if (!d) return null;
+    MAS.forEach(function (ma) {
+      var n = ma[0], sum = 0;
+      d.forEach(function (p, i) { sum += p.c; if (i >= n) sum -= d[i - n].c; p['ma' + n] = i >= n - 1 ? sum / n : null; });
+    });
+    return d;
+  }
+  function series(k) {
     var r = WRANGES.filter(function (x) { return x[0] === WL.range; })[0];
-    var h = HIST[r[1]], s = h && h.data && h.data.s[k];
-    if (!s) return null;
-    var pts = s.m.map(function (m, i) { return { t: (s.t0 + m * 60) * 1000, c: s.c[i] }; });
-    var n = WL.range === '1D' || WL.range === '1W' || WL.range === '1M' ? 20 : 50, sum = 0;
-    pts.forEach(function (p, i) { sum += p.c; if (i >= n) sum -= pts[i - n].c; p.ma = i >= n - 1 ? sum / n : null; });
-    if (r[2]) { var from = pts.length ? pts[pts.length - 1].t - r[2] * 864e5 : 0; pts = pts.filter(function (p) { return p.t >= from; }); }
-    return { pts: pts, n: n };
+    if (r[2]) {
+      var d = dailyWithMA(k); if (!d) return null;
+      var from = d.length ? d[d.length - 1].t - r[2] * 864e5 : 0;
+      return { pts: d.filter(function (p) { return p.t >= from; }), daily: true };
+    }
+    var h = HIST[r[1]], pts = unpack(h && h.data && h.data.s[k]);
+    if (!pts) return null;
+    var lvl = {}, d2 = WL.dma ? dailyWithMA(k) : null;   // intraday: today's DMA levels as flat lines
+    if (d2 && d2.length) MAS.forEach(function (ma) { lvl[ma[0]] = d2[d2.length - 1]['ma' + ma[0]]; });
+    return { pts: pts, daily: false, lvl: lvl };
   }
   function chartSVG(k, w) {
     var q = quote(k), sr = series(k);
-    var H = 118, padR = 40, padB = 13, padT = 4, W = Math.max(120, w);
+    var H = 140, padR = 46, padB = 14, padT = 6, W = Math.max(120, w);
     if (!sr || sr.pts.length < 2) return '<svg viewBox="0 0 ' + W + ' ' + H + '"><text x="' + (W / 2) + '" y="' + (H / 2) + '" fill="#555" font-size="10" text-anchor="middle">' + (sr ? 'No data for this range' : 'Loading…') + '</text></svg>';
     var p = sr.pts, lo = Infinity, hi = -Infinity;
-    p.forEach(function (x) { lo = Math.min(lo, x.c); hi = Math.max(hi, x.c); if (WL.dma && x.ma != null) { lo = Math.min(lo, x.ma); hi = Math.max(hi, x.ma); } });
+    p.forEach(function (x) {
+      lo = Math.min(lo, x.c); hi = Math.max(hi, x.c);
+      if (WL.dma && sr.daily) MAS.forEach(function (ma) { var v = x['ma' + ma[0]]; if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+    });
     if (hi === lo) { hi += Math.abs(hi) * 0.001 || 1; lo -= Math.abs(lo) * 0.001 || 1; }
-    var pad = (hi - lo) * 0.06; hi += pad; lo -= pad;
+    var pad = (hi - lo) * 0.15; hi += pad; lo -= pad;   // breathing room above and below the line
     var t0 = p[0].t, t1 = p[p.length - 1].t, pw = W - padR, ph = H - padB - padT;
-    var useIdx = WL.range === '1D' || WL.range === '1W';   // intraday: space points evenly so closed hours don't leave gaps
+    var useIdx = !sr.daily;   // intraday: space points evenly so closed hours don't leave gaps
     function X(x, i) { return useIdx ? i / (p.length - 1) * pw : (x.t - t0) / (t1 - t0 || 1) * pw; }
     function Y(v) { return padT + (hi - v) / (hi - lo) * ph; }
     var dp = dpFor(q, p[p.length - 1].c), o = '';
-    for (var g = 0; g <= 3; g++) {   // grid and right-hand price axis
-      var v = lo + (hi - lo) * (g + 0.5) / 4, y = Y(v).toFixed(1);
-      o += '<line x1="0" x2="' + pw + '" y1="' + y + '" y2="' + y + '" stroke="#262626" stroke-dasharray="2 3"/>' +
-        '<text x="' + (pw + 3) + '" y="' + (+y + 3) + '" fill="#777" font-size="8.5" font-family="Menlo,monospace">' + num(v, dp) + '</text>';
+    for (var g = 0; g <= 4; g++) {   // grid and right-hand price axis
+      var v = lo + (hi - lo) * (g + 0.5) / 5, y = Y(v).toFixed(1);
+      o += '<line x1="0" x2="' + pw + '" y1="' + y + '" y2="' + y + '" stroke="#242424" stroke-dasharray="2 3"/>' +
+        '<text x="' + (pw + 3) + '" y="' + (+y + 3) + '" fill="#8a8a8a" font-size="9" font-family="Menlo,monospace">' + wnum(v, dp) + '</text>';
     }
     function lbl(x) {
       var d = new Date(x.t);
@@ -348,19 +366,34 @@
       return d.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + (WL.range === '1Y' ? " '" + String(d.getFullYear()).slice(2) : '');
     }
     [0, Math.floor((p.length - 1) / 2), p.length - 1].forEach(function (i, j) {
-      o += '<text x="' + X(p[i], i).toFixed(1) + '" y="' + (H - 2) + '" fill="#666" font-size="8.5" font-family="Menlo,monospace" text-anchor="' + ['start', 'middle', 'end'][j] + '">' + lbl(p[i]) + '</text>';
+      o += '<text x="' + X(p[i], i).toFixed(1) + '" y="' + (H - 2) + '" fill="#777" font-size="9" font-family="Menlo,monospace" text-anchor="' + ['start', 'middle', 'end'][j] + '">' + lbl(p[i]) + '</text>';
     });
-    if (WL.dma) {
-      var md = '';
-      p.forEach(function (x, i) { if (x.ma != null) md += (md ? 'L' : 'M') + X(x, i).toFixed(1) + ' ' + Y(x.ma).toFixed(1); });
-      if (md) o += '<path d="' + md + '" fill="none" stroke="#5fd0e8" stroke-width="1" stroke-dasharray="3 2"/>';
-    }
+    if (WL.dma) MAS.forEach(function (ma) {
+      var key = 'ma' + ma[0];
+      if (sr.daily) {
+        var md = '';
+        p.forEach(function (x, i) { if (x[key] != null) md += (md ? 'L' : 'M') + X(x, i).toFixed(1) + ' ' + Y(x[key]).toFixed(1); });
+        if (md) o += '<path d="' + md + '" fill="none" stroke="' + ma[1] + '" stroke-width="1.1"/>';
+      } else {
+        var lv = sr.lvl[ma[0]];
+        if (lv != null && lv >= lo && lv <= hi) o += '<line x1="0" x2="' + pw + '" y1="' + Y(lv).toFixed(1) + '" y2="' + Y(lv).toFixed(1) + '" stroke="' + ma[1] + '" stroke-width="1" stroke-dasharray="4 3"/>';
+      }
+    });
     var d = p.map(function (x, i) { return (i ? 'L' : 'M') + X(x, i).toFixed(1) + ' ' + Y(x.c).toFixed(1); }).join('');
     var last = p[p.length - 1], ly = Y(last.c);
-    o += '<path d="' + d + '" fill="none" stroke="#ffa21f" stroke-width="1.4" stroke-linejoin="round"/>' +
-      '<rect x="' + pw + '" y="' + (ly - 6).toFixed(1) + '" width="' + padR + '" height="12" fill="#ffa21f"/>' +
-      '<text x="' + (pw + 3) + '" y="' + (ly + 3).toFixed(1) + '" fill="#000" font-size="8.5" font-weight="700" font-family="Menlo,monospace">' + num(last.c, dp) + '</text>';
+    o += '<path d="' + d + '" fill="none" stroke="' + LINE + '" stroke-width="1.5" stroke-linejoin="round"/>' +
+      '<rect x="' + pw + '" y="' + (ly - 6.5).toFixed(1) + '" width="' + padR + '" height="13" fill="' + LINE + '"/>' +
+      '<text x="' + (pw + 3) + '" y="' + (ly + 3).toFixed(1) + '" fill="#000" font-size="9" font-weight="700" font-family="Menlo,monospace">' + wnum(last.c, dp) + '</text>';
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + o + '</svg>';
+  }
+  function maLegend(k) {   // latest 50/100/200-day values under the chart title
+    if (!WL.dma) return '';
+    var d = dailyWithMA(k); if (!d || !d.length) return '';
+    var q = quote(k), lastD = d[d.length - 1];
+    return '<div class="wma">' + MAS.map(function (ma) {
+      var v = lastD['ma' + ma[0]];
+      return '<span style="color:' + ma[1] + '">' + ma[0] + 'D ' + (v != null ? wnum(v, dpFor(q, v)) : '—') + '</span>';
+    }).join('') + '</div>';
   }
   function chgHTML(q, from, to) {
     if (from == null || to == null) return '';
@@ -372,7 +405,7 @@
     var grid = $('wgrid'); if (!grid) return;
     var keys = WL.list.filter(function (k) { return WL.charts.indexOf(k) >= 0; }).slice(0, 4);
     var r = WRANGES.filter(function (x) { return x[0] === WL.range; })[0];
-    loadHist(r[1]);
+    loadHist(r[1]); if (WL.dma) loadHist('hist-2y');
     var cells = '';
     for (var i = 0; i < 4; i++) {
       var k = keys[i];
@@ -380,7 +413,7 @@
       var q = quote(k), sr = series(k), p = sr && sr.pts;
       var from = WL.range === '1D' && q && q.prev ? q.prev : p && p.length ? p[0].c : null;
       var to = q && q.price != null ? q.price : p && p.length ? p[p.length - 1].c : null;
-      cells += '<div class="wc"><div class="wh"><b>' + esc(k) + '</b><span class="p">' + (to != null ? num(to, dpFor(q, to)) : '') + '</span>' + chgHTML(q, from, to) + '</div><div data-wsvg="' + esc(k) + '"></div></div>';
+      cells += '<div class="wc"><div class="wh"><b>' + esc(k) + '</b><span class="p">' + (to != null ? wnum(to, dpFor(q, to)) : '') + '</span>' + chgHTML(q, from, to) + '</div>' + maLegend(k) + '<div data-wsvg="' + esc(k) + '"></div></div>';
     }
     grid.innerHTML = cells;
     grid.querySelectorAll('[data-wsvg]').forEach(function (el) { el.innerHTML = chartSVG(el.getAttribute('data-wsvg'), el.clientWidth); });
@@ -389,7 +422,7 @@
     var rows = WL.list.map(function (k) {
       var q = quote(k), f = q ? fmtQ(q) : null, on = WL.charts.indexOf(k) >= 0;
       return '<tr><td class="s" data-wrow="' + esc(k) + '">' + esc(k) + (q ? '<span>' + esc(q.name || '') + '</span>' : '') + '</td>' +
-        '<td class="px">' + (q && q.price != null ? num(q.price, dpFor(q)) : '—') + '</td>' +
+        '<td class="px">' + (q && q.price != null ? wnum(q.price, dpFor(q)) : '—') + '</td>' +
         '<td class="' + (f ? f.cls : 'fl') + '">' + (f ? f.ch : '') + '</td>' +
         '<td class="ct"><button class="wtog' + (on ? ' on' : '') + '" type="button" data-wchart="' + esc(k) + '" aria-pressed="' + on + '" aria-label="Chart ' + esc(k) + '">▦</button></td></tr>';
     }).join('');
@@ -397,7 +430,7 @@
       '<table class="wl"><thead><tr><th>SECURITY</th><th>LAST PX</th><th>1D %CHG</th><th>CHT</th></tr></thead><tbody>' + rows +
       '<tr class="wadd"><td colspan="4"><button type="button" data-wadd="1">+ Add security</button></td></tr></tbody></table>' +
       '<p class="wfoot">Delayed prices from ' + esc((MKT && MKT.source) || 'Yahoo Finance') + (MKT && MKT.updated ? ', ' + esc(MKT.updated.slice(11)) + ' SGT' : '') + '. Yields show the change in basis points. ' +
-      (WL.dma ? 'Dashed blue line: ' + (WL.range === '1D' || WL.range === '1W' ? '20-bar' : WL.range === '1M' ? '20-day' : '50-day') + ' moving average. ' : '') + 'Tap a security to move or remove it. Pull down to refresh.</p>';
+      (WL.dma ? 'DMA: 50-day (blue), 100-day (purple) and 200-day (red) moving averages of daily closes; on 1D and 1W they show as dashed levels. ' : '') + 'Tap a security to move or remove it. Pull down to refresh.</p>';
     drawCharts();
   }
   function toggleChart(k) {
@@ -2221,7 +2254,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 1f31ff1aa2c6</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f66bd9295c4f</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
