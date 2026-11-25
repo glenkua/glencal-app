@@ -178,6 +178,8 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .kpis span { color: var(--muted); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; }
 .kpis b { font-size: 1.05rem; color: var(--amber); overflow-wrap: anywhere; }
 .kpis i { font-style: normal; color: var(--muted); font-size: 0.72rem; }
+.txb { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; }
+.txb.txoff b, .txb.txoff .v { color: var(--muted); text-decoration: line-through; }
 .ibar { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) 5.2em; gap: 0.45rem; align-items: center; padding: 0.22rem 0; font-size: 0.86rem; }
 .ibar .tr3 { height: 0.6rem; background: var(--raise); border-radius: 2px; overflow: hidden; }
 .ibar .tr3 > div { height: 100%; background: var(--amber); }

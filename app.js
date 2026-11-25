@@ -151,6 +151,7 @@
     calcTape = data.calc || [];
     notes = data.notes || [];
     txns = data.txns || []; txMeta = data.txMeta || { last: 0, failed: [] };
+    if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
     Tools.setTape(calcTape);
     unlocked = true;
     todayISO = GC.iso(new Date());
@@ -674,27 +675,43 @@
   ];
   var BANKS = [['DBS/POSB', /dbs\.com|posb/i], ['UOB', /uob/i], ['Citi', /citi/i], ['HSBC', /hsbc/i], ['Trust', /trustbank|trust\.bank/i], ['OCBC', /ocbc/i], ['StanChart', /\bsc\.com|standard chartered/i], ['Amex', /americanexpress|amex/i]];
   var TX_TRIGGER = /(transaction|spent|purchase|charged|card (?:was|has been) used|has been used|debited|you(?:'ve| have)? made|payment of|transaction alert|card alert)/i;
-  var TX_SKIP = /\b(otp|one[- ]time (?:password|pin|code)|verification code|e-?statement|statement is ready|payment received|thank you for your payment|login|log in)\b/i;
+  var TX_SKIP = /\b(otp|one[- ]time (?:password|pin|code)|verification code|e-?statement|statement is ready|statement of account|payment received|thank you for your payment|login|log in|password|promotion|promo|offer|reward|exclusive|win|apply now|limited time|newsletter|survey|invitation|webinar|update your|security alert|card (?:is )?ready|activate)\b/i;
+  var TX_NOT_SPEND = /(payment (?:to|for) your (?:card|account)|card payment|bill payment received|has been credited|credited to your|incoming|received (?:a )?(?:paynow|transfer|funds|payment)|fund transfer|funds transfer|salary|interest credited|cash ?back credited|giro deduction for your card)/i;
+  var BANK_FROM = 'from:dbs.com OR from:posb.com.sg OR from:uobgroup.com OR from:uob.com.sg OR from:citibank.com.sg OR from:citibank.com OR from:citi.com OR from:hsbc.com.sg OR from:hsbc.com OR from:trustbank.sg OR from:trust.bank OR from:ocbc.com OR from:sc.com OR from:americanexpress.com OR from:maybank.com.sg';
+  var NEAR_BALANCE = /(balance|limit|available|outstanding|minimum|credit line|total due)[^.]{0,25}$/i;
   var CCYS = 'SGD|S\\$|USD|US\\$|EUR|GBP|JPY|AUD|NZD|MYR|HKD|THB|IDR|CNY|CNH|KRW|INR|CHF|CAD';
   // reads one alert email into { amt, ccy, merchant, card, bank } or null
   function parseTxn(m) {
     var text = (m.subject + '\n' + (m.text || m.snippet || '')).slice(0, 4000).replace(/\s+/g, ' ');
-    if (TX_SKIP.test(m.subject) || !TX_TRIGGER.test(text)) return null;
-    var am = new RegExp('(' + CCYS + ')\\s?([\\d,]+(?:\\.\\d{1,2})?)', 'i').exec(text) || /(\$)\s?([\d,]+\.\d{2})/.exec(text);
+    var bank0 = (BANKS.filter(function (b) { return b[1].test(m.fromEmail + ' ' + m.from); })[0] || [''])[0];
+    if (!bank0) return null;                                              // only your banks' alerts
+    if (TX_SKIP.test(m.subject) || !TX_TRIGGER.test(text) || TX_NOT_SPEND.test(text.slice(0, 600))) return null;
+    // the purchase amount: the first currency amount after the trigger word that isn't a balance or limit
+    var trig = TX_TRIGGER.exec(text), from = trig ? Math.max(0, trig.index - 120) : 0;
+    var re = new RegExp('(' + CCYS + '|\\$)\\s?([\\d,]+(?:\\.\\d{1,2})?)', 'gi'), am = null, cand;
+    while ((cand = re.exec(text))) {
+      if (cand.index < from) continue;
+      if (NEAR_BALANCE.test(text.slice(Math.max(0, cand.index - 40), cand.index))) continue;
+      if (cand[1] === '$' && !/\.\d{2}$/.test(cand[2])) continue;
+      am = cand; break;
+    }
     if (!am) return null;
     var ccy = am[1].toUpperCase().replace('US$', 'USD').replace('S$', 'SGD');
     if (ccy === '$') ccy = 'SGD';
     var amt = parseFloat(am[2].replace(/,/g, ''));
     if (!(amt > 0)) return null;
     var after = text.slice(am.index + am[0].length, am.index + am[0].length + 160);
-    var mm = /\b(?:at|@|to|merchant:?|from)\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|at|was|has|is|if|ref|reference)\b|[.,;:()]|\s{2}|$)/i.exec(after)
+    var mm = /\b(?:at|@|to|merchant:?)\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|at|was|has|is|if|ref|reference)\b|[.,;:()]|\s{2}|$)/i.exec(after)
       || /\b(?:at|@|merchant:?)\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|was|has|is)\b|[.,;:()]|$)/i.exec(text);
     var merchant = mm ? mm[1].trim().replace(/\s+/g, ' ') : '';
-    if (/^(your|the|a|an|card|account)$/i.test(merchant)) merchant = '';
+    if (/^(your|the|a|an|card|account)\b/i.test(merchant)) {   // e.g. "your card ending 1234": take the name after "at" instead
+      var at2 = /\bat\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|was|has|is)\b|[.,;:()]|$)/i.exec(text);
+      merchant = at2 ? at2[1].trim() : '';
+    }
     var cm = /(?:ending(?:\s+(?:in|with))?|card\s*(?:no\.?|number)?\s*[x*•]+|[x*•]{4,})\s*[-:]?\s*(\d{4})\b/i.exec(text);
-    var bank = (BANKS.filter(function (b) { return b[1].test(m.fromEmail + ' ' + m.from); })[0] || [''])[0];
+    var bank = bank0;
     var refund = /\b(refund|reversal|reversed|credited|cashback)\b/i.test(text) && !/debited|spent|charged/i.test(text.slice(0, 200));
-    return { id: m.id, date: m.date, amt: refund ? -amt : amt, ccy: ccy, merchant: merchant || '(unknown)', card: cm ? cm[1] : '', bank: bank,
+    return { id: m.id, date: m.date, amt: refund ? -amt : amt, ccy: ccy, big: Math.abs(amt) > 20000 && (ccy === 'SGD' || ccy === 'USD' || ccy === 'EUR' || ccy === 'GBP'), merchant: merchant || '(unknown)', card: cm ? cm[1] : '', bank: bank,
              cat: (MCATS.filter(function (c) { return c[1].test(merchant + ' ' + m.subject); })[0] || ['Other'])[0] };
   }
   function toSGD(t) {
@@ -707,7 +724,7 @@
     if (INS.scanning) return Promise.resolve();
     INS.scanning = true; INS.msg = 'Searching your mail for card alerts…'; renderInsights();
     var days = txMeta.last ? Math.min(400, Math.ceil((Date.now() - txMeta.last) / 864e5) + 2) : 180;
-    var q = 'newer_than:' + days + 'd (transaction OR spent OR purchase OR "card alert" OR charged OR "has been used" OR debited OR "you made") -OTP -"one-time"';
+    var q = 'newer_than:' + days + 'd (' + BANK_FROM + ') -OTP -"one-time"';
     var have = {}; txns.forEach(function (t) { have[t.id] = 1; }); (txMeta.failed || []).forEach(function (f) { have[f.id] = 1; });
     return Gmail.ids(q, 500).then(function (ids) {
       ids = ids.filter(function (id) { return !have[id]; });
@@ -721,7 +738,7 @@
         if (t) { txns.push(t); added++; } else (txMeta.failed = txMeta.failed || []).push({ id: m.id, s: m.subject.slice(0, 80), f: m.from.slice(0, 40), d: m.date });
       });
       txMeta.failed = (txMeta.failed || []).slice(-300);
-      txMeta.last = Date.now(); persist();
+      txMeta.last = Date.now(); txMeta.v = 2; persist();
       INS.msg = added ? 'Added ' + added + ' transaction' + (added === 1 ? '' : 's') + '.' : 'No new card alerts found.';
     }, function (e) { INS.msg = 'Scan failed: ' + (e.message || e); })
       .then(function () { INS.scanning = false; renderInsights(); });
@@ -747,7 +764,10 @@
       (Gmail.token() ? '<button class="btn primary" type="button" data-act="ins-scan"' + (INS.scanning ? ' disabled' : '') + '>' + (INS.scanning ? 'Scanning…' : 'Scan mail') + '</button>'
         : '<button class="btn primary" type="button" data-act="gmail-go">Sign in to scan</button>') + '</div>';
     var r = periodRange(INS.period), inP = function (t, a, b) { return t.date >= +a && t.date < +b; };
-    var cur = txns.filter(function (t) { return inP(t, r[0], r[1]); }), prev = txns.filter(function (t) { return inP(t, r[2], r[3]); });
+    var counted = function (t) { return !t.x && !(t.big && !t.ok); };
+    var allCur = txns.filter(function (t) { return inP(t, r[0], r[1]); });
+    var cur = allCur.filter(counted), prev = txns.filter(function (t) { return inP(t, r[2], r[3]) && counted(t); });
+    var held = allCur.filter(function (t) { return t.big && !t.ok && !t.x; });
     var sum = function (l) { return l.reduce(function (s2, t) { var v = toSGD(t); return s2 + (isFinite(v) ? v : 0); }, 0); };
     var total = sum(cur), ptotal = sum(prev), $$ = function (v) { return '$' + fmt0(v); };
     if (!cur.length) { $('ins').innerHTML = h + '<p class="empty">No card transactions found for this period' + (Gmail.token() ? '. Tap Scan mail.' : '.') + '</p>'; return; }
@@ -768,7 +788,7 @@
     h += '<section class="bsec"><h2 class="mbar"><span>BY CARD</span></h2>' + bars(group(function (t) { return (t.bank || 'Card') + (t.card ? ' ··' + t.card : ''); }), 8) + '</section>';
     // subscriptions: same merchant in 2+ different months at a similar amount
     var byM = {};
-    txns.forEach(function (t) { if (t.amt > 0 && t.merchant !== '(unknown)') (byM[t.merchant.toLowerCase()] = byM[t.merchant.toLowerCase()] || []).push(t); });
+    txns.forEach(function (t) { if (counted(t) && t.amt > 0 && t.merchant !== '(unknown)') (byM[t.merchant.toLowerCase()] = byM[t.merchant.toLowerCase()] || []).push(t); });
     var subs = Object.keys(byM).map(function (k) {
       var l = byM[k], months = {}; l.forEach(function (t) { months[GC.iso(new Date(t.date)).slice(0, 7)] = 1; });
       var amts = l.map(toSGD).filter(isFinite).sort(function (a, b) { return a - b; }), med = amts[Math.floor(amts.length / 2)];
@@ -787,9 +807,12 @@
     var fx = cur.filter(function (t) { return t.ccy !== 'SGD'; }), fxT = sum(fx);
     if (fx.length) h += '<p class="small" style="margin-top:0.6rem">Foreign currency: ' + $$(fxT) + ' (' + fmt0(fxT / total * 100) + '% of spending) across ' + fx.length + ' transactions, converted at today\'s mid rates.</p>';
     // all transactions + unread alerts
-    h += '<details class="sched"><summary>Transactions (' + cur.length + ')</summary>' + cur.slice().sort(function (a, b) { return b.date - a.date; }).map(function (t) {
-      return '<div class="bq"><b>' + esc(mailWhen(t.date)) + ' · ' + esc(t.merchant) + '</b><span class="v">' + (t.ccy !== 'SGD' ? esc(t.ccy) + ' ' : '$') + fmt2(t.amt) + '</span></div>';
-    }).join('') + '</details>';
+    if (held.length) h += '<section class="bsec"><h2 class="mbar"><span>CHECK THESE · NOT COUNTED</span><span class="n">' + held.length + '</span></h2><p class="small">Unusually large, so left out of the totals. Tap one that is a real purchase to count it.</p>' +
+      held.map(function (t) { return '<button type="button" class="bq txb" data-tx="' + esc(t.id) + '" data-ok="1"><b>' + esc(mailWhen(t.date)) + ' · ' + esc(t.merchant) + '</b><span class="v">' + esc(t.ccy) + ' ' + fmt2(t.amt) + '</span></button>'; }).join('') + '</section>';
+    h += '<details class="sched"><summary>Transactions (' + allCur.length + ') · tap to exclude or include</summary>' + allCur.slice().sort(function (a, b) { return b.date - a.date; }).map(function (t) {
+      return '<button type="button" class="bq txb' + (counted(t) ? '' : ' txoff') + '" data-tx="' + esc(t.id) + '"><b>' + esc(mailWhen(t.date)) + ' · ' + esc(t.merchant) + (t.bank ? ' <span class="pl">' + esc(t.bank) + '</span>' : '') + '</b><span class="v">' + (t.ccy !== 'SGD' ? esc(t.ccy) + ' ' : '$') + fmt2(t.amt) + '</span></button>';
+    }).join('') + '</details>' +
+      '<div class="actions" style="margin-top:0.4rem"><button class="btn link" type="button" data-act="ins-reset">Clear and rescan from scratch</button></div>';
     var fl = (txMeta.failed || []).slice(-30).reverse();
     if (fl.length) h += '<details class="sched"><summary>Emails it couldn\'t read (' + (txMeta.failed || []).length + ')</summary><p class="small">If any of these are card purchases, send me one (with numbers blanked out) and I\'ll teach it that format.</p>' +
       fl.map(function (f) { return '<div class="bq"><b>' + esc(f.f) + '</b><span class="v small">' + esc(f.s) + '</span></div>'; }).join('') + '</details>';
@@ -833,7 +856,15 @@
   // older mail loads by itself when you scroll near the bottom
   SC().addEventListener('scroll', function () { if (tab === 'mail' && MAIL.next && !MAIL.more && SC().scrollTop + SC().clientHeight > SC().scrollHeight - 600) loadOlder(); }, { passive: true });
   $('mail').addEventListener('click', function (e) { if (e.target.closest('[data-older]')) { loadOlder(); return; } var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
-  $('ins').addEventListener('click', function (e) { var g = e.target.closest('[data-act]'); if (!g) return; if (g.getAttribute('data-act') === 'gmail-go') Gmail.start(); if (g.getAttribute('data-act') === 'ins-scan') scanTxns(); });
+  $('ins').addEventListener('click', function (e) {
+    var tb = e.target.closest('[data-tx]');
+    if (tb) {
+      var t = txns.filter(function (x) { return x.id === tb.getAttribute('data-tx'); })[0];
+      if (t) { if (tb.getAttribute('data-ok')) { t.ok = true; t.x = false; } else if (t.big && !t.ok && !t.x) { t.ok = true; } else { t.x = !t.x; } persist(); renderInsights(); }
+      return;
+    }
+    var g = e.target.closest('[data-act]'); if (!g) return;
+    if (g.getAttribute('data-act') === 'ins-reset') { txns = []; txMeta = { v: 2, last: 0, failed: [] }; persist(); INS.msg = 'Cleared. Tap Scan mail.'; renderInsights(); return; } if (g.getAttribute('data-act') === 'gmail-go') Gmail.start(); if (g.getAttribute('data-act') === 'ins-scan') scanTxns(); });
   $('mchips').addEventListener('click', function (e) { var b = e.target.closest('[data-m]'); if (!b) return; MAIL.filter = b.getAttribute('data-m'); renderMailChips(); loadMail(); SC().scrollTop = 0; });
   $('ichips').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (!b) return; INS.period = b.getAttribute('data-i'); renderInsChips(); renderInsights(); SC().scrollTop = 0; });
   $('q').addEventListener('keydown', function (e) { if (tab === 'mail' && e.key === 'Enter') { MAIL.q = $('q').value.trim(); loadMail(); $('q').blur(); } });
@@ -1795,7 +1826,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 746c7892cd9a</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 84ce93c08f2c</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
