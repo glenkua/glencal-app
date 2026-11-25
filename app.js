@@ -33,7 +33,7 @@
   var saving = Promise.resolve();
   var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [], bookSeen = [], mailSeen = [], seenSet = {};
   function persist() {
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800), mailSeen: mailSeen.slice(-1500) };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800), mailSeen: mailSeen.slice(-1500), watch: WL };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -154,6 +154,7 @@
     mailPins = data.mailPins || [];
     bookSeen = data.bookSeen || [];
     mailSeen = data.mailSeen || []; seenSet = {}; mailSeen.forEach(function (id) { seenSet[id] = 1; });
+    WL = data.watch && data.watch.list ? data.watch : JSON.parse(JSON.stringify(WL_DEFAULT));
     txns = []; txMeta = { v: 2, last: 0, failed: [] };   // insights removed: don't keep card data
     if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
     Tools.setTape(calcTape);
@@ -272,7 +273,7 @@
   function loadMarkets() {
     var url = mktURL(); if (!url || document.hidden) return Promise.resolve();
     return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { if (d && d.items) { MKT = d; renderTicker(); if (tab === 'brief') renderBrief(); try { localStorage.setItem('glencal.mkt', JSON.stringify(d)); } catch (e) {} if (tab === 'tools') Tools.draw(); } }).catch(function () {});
+      .then(function (d) { if (d && d.items) { MKT = d; renderTicker(); if (tab === 'brief') renderBrief(); try { localStorage.setItem('glencal.mkt', JSON.stringify(d)); } catch (e) {} if (tab === 'tools') Tools.draw(); if (tab === 'watch') renderWatch(); } }).catch(function () {});
   }
   function showMarkets() {
     if (!MKT) return;
@@ -284,6 +285,179 @@
       'Change is against the previous close (yields in basis points). UST 2Y uses the CBOT 2-Year Yield futures as a stand-in for the cash yield. Not for trading.</p>' +
       '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
   }
+  // =====================================================================
+  // Watchlist: a Bloomberg-style worksheet with four charts on top
+  // =====================================================================
+  var WL_DEFAULT = { list: ['USDSGD', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'SPX', 'NDX', 'DOW', 'UST 2Y', 'UST 5Y', 'UST 10Y', 'UST 30Y'], charts: ['USDSGD', 'USDJPY', 'SPX', 'UST 10Y'], range: '1M', dma: false };
+  var WL = JSON.parse(JSON.stringify(WL_DEFAULT));
+  var WRANGES = [['1D', 'hist-1d'], ['1W', 'hist-1w'], ['1M', 'hist-1y', 31], ['3M', 'hist-1y', 92], ['6M', 'hist-1y', 183], ['1Y', 'hist-1y', 366]];
+  var HIST = {};   // file -> { at, data, loading }
+  function quote(k) { return MKT && MKT.items ? MKT.items.filter(function (q) { return q.k === k; })[0] : null; }
+  function dpFor(q, v) {
+    if (!q) return 2;
+    if (q.kind === 'yield') return 3;
+    if (q.kind === 'fx') { var a = Math.abs(v != null ? v : q.price); return a >= 5000 ? 0 : a >= 20 ? 2 : 4; }
+    return 2;
+  }
+  function num(v, dp) { return Number(v).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp }); }
+  function loadHist(file) {
+    var h = HIST[file] || (HIST[file] = {});
+    var url = mktURL();
+    if (!url || h.loading || (h.data && Date.now() - h.at < 5 * 60000)) return Promise.resolve();
+    h.loading = true;
+    return fetch(url.replace('/markets.json', '/' + file + '.json'), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.s) { h.data = d; h.at = Date.now(); } }, function () {})
+      .then(function () { h.loading = false; if (tab === 'watch') drawCharts(); });
+  }
+  function renderWatchChips() {
+    $('wchips').innerHTML = WRANGES.map(function (r) {
+      return '<button class="chip" type="button" data-wr="' + r[0] + '" aria-pressed="' + (WL.range === r[0]) + '">' + r[0] + '</button>';
+    }).join('') + '<button class="chip" type="button" data-wdma="1" aria-pressed="' + !!WL.dma + '">DMA</button>';
+  }
+  function series(k) {   // [{t, c}] for the chosen range, plus the moving average over the same points
+    var r = WRANGES.filter(function (x) { return x[0] === WL.range; })[0];
+    var h = HIST[r[1]], s = h && h.data && h.data.s[k];
+    if (!s) return null;
+    var pts = s.m.map(function (m, i) { return { t: (s.t0 + m * 60) * 1000, c: s.c[i] }; });
+    var n = WL.range === '1D' || WL.range === '1W' || WL.range === '1M' ? 20 : 50, sum = 0;
+    pts.forEach(function (p, i) { sum += p.c; if (i >= n) sum -= pts[i - n].c; p.ma = i >= n - 1 ? sum / n : null; });
+    if (r[2]) { var from = pts.length ? pts[pts.length - 1].t - r[2] * 864e5 : 0; pts = pts.filter(function (p) { return p.t >= from; }); }
+    return { pts: pts, n: n };
+  }
+  function chartSVG(k, w) {
+    var q = quote(k), sr = series(k);
+    var H = 118, padR = 40, padB = 13, padT = 4, W = Math.max(120, w);
+    if (!sr || sr.pts.length < 2) return '<svg viewBox="0 0 ' + W + ' ' + H + '"><text x="' + (W / 2) + '" y="' + (H / 2) + '" fill="#555" font-size="10" text-anchor="middle">' + (sr ? 'No data for this range' : 'Loading…') + '</text></svg>';
+    var p = sr.pts, lo = Infinity, hi = -Infinity;
+    p.forEach(function (x) { lo = Math.min(lo, x.c); hi = Math.max(hi, x.c); if (WL.dma && x.ma != null) { lo = Math.min(lo, x.ma); hi = Math.max(hi, x.ma); } });
+    if (hi === lo) { hi += Math.abs(hi) * 0.001 || 1; lo -= Math.abs(lo) * 0.001 || 1; }
+    var pad = (hi - lo) * 0.06; hi += pad; lo -= pad;
+    var t0 = p[0].t, t1 = p[p.length - 1].t, pw = W - padR, ph = H - padB - padT;
+    var useIdx = WL.range === '1D' || WL.range === '1W';   // intraday: space points evenly so closed hours don't leave gaps
+    function X(x, i) { return useIdx ? i / (p.length - 1) * pw : (x.t - t0) / (t1 - t0 || 1) * pw; }
+    function Y(v) { return padT + (hi - v) / (hi - lo) * ph; }
+    var dp = dpFor(q, p[p.length - 1].c), o = '';
+    for (var g = 0; g <= 3; g++) {   // grid and right-hand price axis
+      var v = lo + (hi - lo) * (g + 0.5) / 4, y = Y(v).toFixed(1);
+      o += '<line x1="0" x2="' + pw + '" y1="' + y + '" y2="' + y + '" stroke="#262626" stroke-dasharray="2 3"/>' +
+        '<text x="' + (pw + 3) + '" y="' + (+y + 3) + '" fill="#777" font-size="8.5" font-family="Menlo,monospace">' + num(v, dp) + '</text>';
+    }
+    function lbl(x) {
+      var d = new Date(x.t);
+      if (WL.range === '1D') return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+      return d.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + (WL.range === '1Y' ? " '" + String(d.getFullYear()).slice(2) : '');
+    }
+    [0, Math.floor((p.length - 1) / 2), p.length - 1].forEach(function (i, j) {
+      o += '<text x="' + X(p[i], i).toFixed(1) + '" y="' + (H - 2) + '" fill="#666" font-size="8.5" font-family="Menlo,monospace" text-anchor="' + ['start', 'middle', 'end'][j] + '">' + lbl(p[i]) + '</text>';
+    });
+    if (WL.dma) {
+      var md = '';
+      p.forEach(function (x, i) { if (x.ma != null) md += (md ? 'L' : 'M') + X(x, i).toFixed(1) + ' ' + Y(x.ma).toFixed(1); });
+      if (md) o += '<path d="' + md + '" fill="none" stroke="#5fd0e8" stroke-width="1" stroke-dasharray="3 2"/>';
+    }
+    var d = p.map(function (x, i) { return (i ? 'L' : 'M') + X(x, i).toFixed(1) + ' ' + Y(x.c).toFixed(1); }).join('');
+    var last = p[p.length - 1], ly = Y(last.c);
+    o += '<path d="' + d + '" fill="none" stroke="#ffa21f" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<rect x="' + pw + '" y="' + (ly - 6).toFixed(1) + '" width="' + padR + '" height="12" fill="#ffa21f"/>' +
+      '<text x="' + (pw + 3) + '" y="' + (ly + 3).toFixed(1) + '" fill="#000" font-size="8.5" font-weight="700" font-family="Menlo,monospace">' + num(last.c, dp) + '</text>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + o + '</svg>';
+  }
+  function chgHTML(q, from, to) {
+    if (from == null || to == null) return '';
+    if (q && q.kind === 'yield') { var bp = (to - from) * 100; return '<span class="c ' + (bp > 0.05 ? 'up' : bp < -0.05 ? 'dn' : 'fl') + '" style="color:var(--' + (bp > 0.05 ? 'up' : bp < -0.05 ? 'red' : 'muted') + ')">' + (bp > 0 ? '+' : bp < 0 ? '−' : '') + Math.abs(bp).toFixed(1) + 'bp</span>'; }
+    var pc = (to - from) / from * 100;
+    return '<span class="c" style="color:var(--' + (pc > 0.005 ? 'up' : pc < -0.005 ? 'red' : 'muted') + ')">' + (pc > 0 ? '+' : pc < 0 ? '−' : '') + Math.abs(pc).toFixed(2) + '%</span>';
+  }
+  function drawCharts() {
+    var grid = $('wgrid'); if (!grid) return;
+    var keys = WL.list.filter(function (k) { return WL.charts.indexOf(k) >= 0; }).slice(0, 4);
+    var r = WRANGES.filter(function (x) { return x[0] === WL.range; })[0];
+    loadHist(r[1]);
+    var cells = '';
+    for (var i = 0; i < 4; i++) {
+      var k = keys[i];
+      if (!k) { cells += '<div class="wc empty">Tap ▦ beside a<br>security to chart it</div>'; continue; }
+      var q = quote(k), sr = series(k), p = sr && sr.pts;
+      var from = WL.range === '1D' && q && q.prev ? q.prev : p && p.length ? p[0].c : null;
+      var to = q && q.price != null ? q.price : p && p.length ? p[p.length - 1].c : null;
+      cells += '<div class="wc"><div class="wh"><b>' + esc(k) + '</b><span class="p">' + (to != null ? num(to, dpFor(q, to)) : '') + '</span>' + chgHTML(q, from, to) + '</div><div data-wsvg="' + esc(k) + '"></div></div>';
+    }
+    grid.innerHTML = cells;
+    grid.querySelectorAll('[data-wsvg]').forEach(function (el) { el.innerHTML = chartSVG(el.getAttribute('data-wsvg'), el.clientWidth); });
+  }
+  function renderWatch() {
+    var rows = WL.list.map(function (k) {
+      var q = quote(k), f = q ? fmtQ(q) : null, on = WL.charts.indexOf(k) >= 0;
+      return '<tr><td class="s" data-wrow="' + esc(k) + '">' + esc(k) + (q ? '<span>' + esc(q.name || '') + '</span>' : '') + '</td>' +
+        '<td class="px">' + (q && q.price != null ? num(q.price, dpFor(q)) : '—') + '</td>' +
+        '<td class="' + (f ? f.cls : 'fl') + '">' + (f ? f.ch : '') + '</td>' +
+        '<td class="ct"><button class="wtog' + (on ? ' on' : '') + '" type="button" data-wchart="' + esc(k) + '" aria-pressed="' + on + '" aria-label="Chart ' + esc(k) + '">▦</button></td></tr>';
+    }).join('');
+    $('watch').innerHTML = '<div id="wgrid" class="wgrid"></div>' +
+      '<table class="wl"><thead><tr><th>SECURITY</th><th>LAST PX</th><th>1D %CHG</th><th>CHT</th></tr></thead><tbody>' + rows +
+      '<tr class="wadd"><td colspan="4"><button type="button" data-wadd="1">+ Add security</button></td></tr></tbody></table>' +
+      '<p class="wfoot">Delayed prices from ' + esc((MKT && MKT.source) || 'Yahoo Finance') + (MKT && MKT.updated ? ', ' + esc(MKT.updated.slice(11)) + ' SGT' : '') + '. Yields show the change in basis points. ' +
+      (WL.dma ? 'Dashed blue line: ' + (WL.range === '1D' || WL.range === '1W' ? '20-bar' : WL.range === '1M' ? '20-day' : '50-day') + ' moving average. ' : '') + 'Tap a security to move or remove it. Pull down to refresh.</p>';
+    drawCharts();
+  }
+  function toggleChart(k) {
+    var i = WL.charts.indexOf(k);
+    if (i >= 0) WL.charts.splice(i, 1);
+    else { WL.charts.push(k); if (WL.charts.length > 4) { var out = WL.charts.shift(); flashToast('Up to 4 charts: ' + out + ' swapped out'); } }
+    persist(); renderWatch();
+  }
+  function wRowSheet(k) {
+    var q = quote(k), i = WL.list.indexOf(k);
+    openSheet('<h2 style="text-transform:none;letter-spacing:0">' + esc(k) + '</h2><p class="small">' + esc(q ? q.name + ' · ' + q.group : '') + '</p>' +
+      '<div class="actions"><button class="btn" type="button" data-wmove="-1" data-wk="' + esc(k) + '"' + (i <= 0 ? ' disabled' : '') + '>↑ Move up</button>' +
+      '<button class="btn" type="button" data-wmove="1" data-wk="' + esc(k) + '"' + (i >= WL.list.length - 1 ? ' disabled' : '') + '>↓ Move down</button>' +
+      '<button class="btn" type="button" data-wdel="' + esc(k) + '">Remove</button><button class="btn primary" type="button" data-act="close">Done</button></div>');
+  }
+  function wPickList(qs) {
+    qs = (qs || '').trim().toLowerCase();
+    var avail = (MKT && MKT.items || []).filter(function (q) { return WL.list.indexOf(q.k) < 0 && (!qs || (q.k + ' ' + (q.name || '') + ' ' + (q.group || '')).toLowerCase().indexOf(qs) >= 0); });
+    if (!avail.length) return '<p class="small">' + (MKT ? 'Nothing else matches.' : 'Prices are still loading.') + '</p>';
+    var html = '', g = null;
+    avail.forEach(function (q) {
+      if (q.group !== g) { g = q.group; html += '<h3>' + esc((g || 'Other').toUpperCase()) + '</h3>'; }
+      html += '<button type="button" data-wpick="' + esc(q.k) + '"><b>' + esc(q.k) + '</b><span>' + esc(q.name || '') + '</span></button>';
+    });
+    return html;
+  }
+  function wAddSheet() {
+    openSheet('<h2>Add security</h2><input id="wsearch" class="search" type="search" placeholder="search, e.g. gold, SGD, DBS" autocomplete="off" style="width:100%;box-sizing:border-box">' +
+      '<div class="wpick" id="wpick">' + wPickList('') + '</div>' +
+      '<p class="small">This list is fixed by the price job. Ask for anything missing and it can be added.</p>' +
+      '<div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
+  }
+  $('sheet').addEventListener('input', function (e) { if (e.target.id === 'wsearch') $('wpick').innerHTML = wPickList(e.target.value); });
+  $('sheet').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-wpick]');
+    if (b) { WL.list.push(b.getAttribute('data-wpick')); persist(); renderWatch(); $('wpick').innerHTML = wPickList($('wsearch').value); flashToast(b.getAttribute('data-wpick') + ' added'); return; }
+    b = e.target.closest('[data-wmove]');
+    if (b) {
+      var k = b.getAttribute('data-wk'), i = WL.list.indexOf(k), j = i + Number(b.getAttribute('data-wmove'));
+      if (i < 0 || j < 0 || j >= WL.list.length) return;
+      WL.list.splice(i, 1); WL.list.splice(j, 0, k); persist(); renderWatch(); wRowSheet(k); return;
+    }
+    b = e.target.closest('[data-wdel]');
+    if (b) {
+      var d = b.getAttribute('data-wdel');
+      WL.list = WL.list.filter(function (x) { return x !== d; }); WL.charts = WL.charts.filter(function (x) { return x !== d; });
+      persist(); renderWatch(); closeSheet(); flashToast(d + ' removed');
+    }
+  });
+  $('watch').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-wchart]'); if (b) { toggleChart(b.getAttribute('data-wchart')); return; }
+    if (e.target.closest('[data-wadd]')) { wAddSheet(); return; }
+    b = e.target.closest('[data-wrow]'); if (b) wRowSheet(b.getAttribute('data-wrow'));
+  });
+  $('wchips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-wr]');
+    if (b) { WL.range = b.getAttribute('data-wr'); persist(); renderWatchChips(); drawCharts(); return; }
+    if (e.target.closest('[data-wdma]')) { WL.dma = !WL.dma; persist(); renderWatchChips(); renderWatch(); }
+  });
+  window.addEventListener('resize', function () { if (tab === 'watch') drawCharts(); });
   $('tick').addEventListener('click', showMarkets);
   loadMarkets();
   setInterval(loadMarkets, 2 * 60000);
@@ -997,14 +1171,15 @@
     if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
     if (tab === 'fan' && t !== 'fan' && FAN) { fanSeen = FAN.items.length ? FAN.items[0].t : fanSeen; prefs('fanSeen', fanSeen); }
     tab = t;
-    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief', nt = t === 'notes', ml = t === 'mail', ins = t === 'ins';
+    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief', nt = t === 'notes', ml = t === 'mail', ins = t === 'ins', wt = t === 'watch';
     $('tab-mail').setAttribute('aria-pressed', ml); $('mail').hidden = !ml; $('mchips').hidden = !ml;
     $('tab-ins').setAttribute('aria-pressed', ins); $('ins').hidden = !ins; $('ichips').hidden = !ins;
     $('tab-notes').setAttribute('aria-pressed', nt); $('notes').hidden = !nt;
+    $('tab-watch').setAttribute('aria-pressed', wt); $('watch').hidden = !wt; $('wchips').hidden = !wt;
     $('tab-brief').setAttribute('aria-pressed', br); $('brief').hidden = !br;
     $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
-    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt || ml || ins; $('cmdrow').hidden = tl || br || ins;
+    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt || ml || ins || wt; $('cmdrow').hidden = tl || br || ins || wt;
     $('ask').hidden = true;   // assistant switched off for now
     $('brandtxt').hidden = !br; $('jump').hidden = true;   // TODAY button removed
     $('add').hidden = !cal;                                   // + ADD only on the Calendar
@@ -1015,6 +1190,7 @@
     else if (tl) { $('tchips').innerHTML = Tools.chips(); Tools.draw(); SC().scrollTop = 0; }
     else if (br) { renderBrief(); loadNews(); SC().scrollTop = 0; }
     else if (nt) { renderNotes(); SC().scrollTop = 0; }
+    else if (wt) { renderWatchChips(); renderWatch(); loadMarkets(); SC().scrollTop = 0; }
     else if (ml || ins) {
       if (!Gmail.token() && Gmail.canRenew()) { Gmail.renew(); return; }   // quick hop to Google and back, no typing
       if (ml) { renderMailChips(); renderMail(); if (!MAIL.list) loadMail(); } else { renderInsChips(); renderInsights(); }
@@ -1025,6 +1201,7 @@
   }
   $('tab-brief').addEventListener('click', function () { setTab('brief'); });
   $('tab-notes').addEventListener('click', function () { setTab('notes'); });
+  $('tab-watch').addEventListener('click', function () { setTab('watch'); });
   $('tab-mail').addEventListener('click', function () { setTab('mail'); });
   $('tab-ins').addEventListener('click', function () { setTab('ins'); });
   // older mail loads by itself when you scroll near the bottom
@@ -1531,7 +1708,7 @@
       return;
     }
     pull.busy = true; setPull(48, true);
-    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : tab === 'mail' ? loadMail() : tab === 'ins' ? scanTxns() : Promise.all([loadNews(), loadMarkets(), loadFinance(), (BMAIL.at = 0, loadBriefMail())])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
+    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : tab === 'watch' ? (HIST = {}, loadMarkets()) : tab === 'mail' ? loadMail() : tab === 'ins' ? scanTxns() : Promise.all([loadNews(), loadMarkets(), loadFinance(), (BMAIL.at = 0, loadBriefMail())])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
   });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });   // no pinch zoom
 
@@ -2043,7 +2220,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 90effa370605</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 22b3c225945a</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
