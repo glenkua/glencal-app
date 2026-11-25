@@ -801,8 +801,11 @@
     else if (tl) { $('tchips').innerHTML = Tools.chips(); Tools.draw(); SC().scrollTop = 0; }
     else if (br) { renderBrief(); loadNews(); SC().scrollTop = 0; }
     else if (nt) { renderNotes(); SC().scrollTop = 0; }
-    else if (ml) { renderMailChips(); renderMail(); if (!MAIL.list) loadMail(); SC().scrollTop = 0; }
-    else if (ins) { renderInsChips(); renderInsights(); SC().scrollTop = 0; }
+    else if (ml || ins) {
+      if (!Gmail.token() && Gmail.canRenew()) { Gmail.renew(); return; }   // quick hop to Google and back, no typing
+      if (ml) { renderMailChips(); renderMail(); if (!MAIL.list) loadMail(); } else { renderInsChips(); renderInsights(); }
+      SC().scrollTop = 0;
+    }
     else { showPast = false; render(); jumpToday(false); }
     syncHead();
   }
@@ -1773,7 +1776,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 8a8ee839b7b7</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f9d332755be8</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1961,7 +1964,7 @@
     else if (act === 'm-note' && openMailMsg) { var nowIso = new Date().toISOString(); notes.push({ id: 'n' + uid(), title: openMailMsg.subject, body: 'From: ' + openMailMsg.from + '\n\n' + (openMailMsg.text || openMailMsg.snippet || '').slice(0, 6000), pinned: false, created: nowIso, updated: nowIso }); persist(); closeSheet(); flashToast('Saved to Notes'); }
     else if (act === 'm-events' && openMailMsg) { var mt = openMailMsg.subject + '\n' + (openMailMsg.text || '').slice(0, 1500); closeSheet(); showPaste(mt); }
     else if (act === 'gmail-go') Gmail.start();
-    else if (act === 'gmail-off') { Gmail.forget(); showGmail(); }
+    else if (act === 'gmail-off') { Gmail.forget(); Gmail.markOK(false); MAIL.list = null; showGmail(); }
     else if (act === 'sv-save') {
       if (!pendingSum) return;
       var nm = $('sv-name').value.trim() || pendingSum.title, ds = $('sv-desc').value.trim(), nowIso = new Date().toISOString();

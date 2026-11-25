@@ -5,8 +5,8 @@ var Gmail = (function () {
   var SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
   var REDIRECT = location.origin + location.pathname.replace(/[^/]*$/, '') + 'oauth.html';
   function rnd() { return Array.from(crypto.getRandomValues(new Uint8Array(16)), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
-  function get(k) { try { return sessionStorage.getItem('glencal.g.' + k); } catch (e) { return null; } }
-  function set(k, v) { try { if (v == null) sessionStorage.removeItem('glencal.g.' + k); else sessionStorage.setItem('glencal.g.' + k, v); } catch (e) {} }
+  function get(k) { try { return localStorage.getItem('glencal.g.' + k); } catch (e) { return null; } }
+  function set(k, v) { try { if (v == null) localStorage.removeItem('glencal.g.' + k); else localStorage.setItem('glencal.g.' + k, v); } catch (e) {} }
   function dec(d) {   // base64url -> UTF-8 text
     var bin = atob(d.replace(/-/g, '+').replace(/_/g, '/')), u = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
@@ -21,18 +21,22 @@ var Gmail = (function () {
   }
   return {
     redirect: REDIRECT,
-    start: function () {
-      var state = rnd(); set('state', state);
+    start: function (opts) {
+      var state = rnd(); set('state', state); set('silent', opts && opts.silent ? '1' : null);
       location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + [
         'client_id=' + encodeURIComponent(CLIENT_ID), 'redirect_uri=' + encodeURIComponent(REDIRECT),
         'response_type=token', 'scope=' + encodeURIComponent(SCOPE), 'include_granted_scopes=true', 'state=' + state
-      ].join('&');
+      ].join('&') + (opts && opts.silent ? '&prompt=none' : '');
     },
     token: function () {
       var t = get('token'), exp = +get('exp');
       return t && exp > Date.now() + 30000 ? t : null;
     },
     forget: function () { set('token', null); set('exp', null); },
+    // renew without asking, if Google still remembers this phone; at most once every 10 minutes
+    canRenew: function () { return get('ok') === '1' && Date.now() - (+get('triedAt') || 0) > 600000; },
+    renew: function () { set('triedAt', String(Date.now())); this.start({ silent: true }); },
+    markOK: function (on) { set('ok', on ? '1' : null); },
     api: function (path) {
       var t = this.token(); if (!t) return Promise.reject(new Error('Not signed in'));
       return fetch('https://gmail.googleapis.com/gmail/v1/users/me/' + path, { headers: { Authorization: 'Bearer ' + t } })
