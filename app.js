@@ -1007,6 +1007,21 @@
     }
     return out + esc(t.slice(last));
   }
+  // plain text for Notes: same clean-up, web addresses shortened to their site name
+  function mailNoteText(m) {
+    var t = String(m.text || m.snippet || '').slice(0, 15000)
+      .replace(/[͏­​-‏   ⁠-⁤﻿]/g, '')
+      .replace(/\[(?:image|cid|img)[^\]]*\]/gi, '')
+      .replace(/<(https?:\/\/[^>\s]+)>/g, ' $1 ')
+      .replace(/\[\s*(https?:\/\/[^\]\s]+)\s*\]/g, ' $1 ')
+      .replace(/https?:\/\/[^\s<>"')\]]+/g, function (u) {
+        u = u.replace(/[.,;:!?]+$/, '');
+        var h = (/^https?:\/\/([^\/?#:]+)/i.exec(u) || [])[1] || 'link';
+        return '🔗 ' + h.replace(/^www\./i, '');
+      })
+      .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
+    return 'From: ' + m.from + '\n\n' + t.slice(0, 6000) + '\n\nOriginal in Gmail: https://mail.google.com/mail/u/0/#all/' + (m.threadId || m.id);
+  }
   var mailCache = {}, mailCacheOrder = [];
   function cacheMail(m) { if (!mailCache[m.id]) { mailCacheOrder.push(m.id); if (mailCacheOrder.length > 30) delete mailCache[mailCacheOrder.shift()]; } mailCache[m.id] = m; }
   function fetchMail(id) { return mailCache[id] ? Promise.resolve(mailCache[id]) : Gmail.full(id).then(function (m) { cacheMail(m); return m; }); }
@@ -2265,7 +2280,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 45a624a63dbe</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 6baff4f5a9c1</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2452,7 +2467,7 @@
     else if (act === 'gmail') showGmail();
     else if (act === 'm-prev') mailStep(-1);
     else if (act === 'm-next') mailStep(1);
-    else if (act === 'm-note' && openMailMsg) { var nowIso = new Date().toISOString(); notes.push({ id: 'n' + uid(), title: openMailMsg.subject, body: 'From: ' + openMailMsg.from + '\n\n' + (openMailMsg.text || openMailMsg.snippet || '').slice(0, 6000), pinned: false, created: nowIso, updated: nowIso }); persist(); closeSheet(); flashToast('Saved to Notes'); }
+    else if (act === 'm-note' && openMailMsg) { var nowIso = new Date().toISOString(); notes.push({ id: 'n' + uid(), title: openMailMsg.subject, body: mailNoteText(openMailMsg), pinned: false, created: nowIso, updated: nowIso }); persist(); closeSheet(); flashToast('Saved to Notes'); }
     else if (act === 'm-events' && openMailMsg) { var mt = openMailMsg.subject + '\n' + (openMailMsg.text || '').slice(0, 1500); closeSheet(); showPaste(mt); }
     else if (act === 'gmail-go') Gmail.start();
     else if (act === 'gmail-off') { Gmail.forget(); Gmail.markOK(false); MAIL.list = null; showGmail(); }
