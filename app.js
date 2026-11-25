@@ -744,7 +744,7 @@
     var group = function (key) { var g = {}; cur.forEach(function (t) { var v = toSGD(t); if (isFinite(v)) g[key(t)] = (g[key(t)] || 0) + v; }); return Object.keys(g).map(function (k) { return [k, g[k]]; }).sort(function (a, b) { return b[1] - a[1]; }); };
     var bars = function (list, max) {
       var top = list.length ? Math.max(list[0][1], 1) : 1;
-      return list.slice(0, max).map(function (x) { return '<div class="bar"><span class="k">' + esc(x[0]) + '</span><span class="tr3"><div style="width:' + Math.max(2, x[1] / top * 100) + '%"></div></span><span class="v">' + $$(x[1]) + '</span></div>'; }).join('');
+      return list.slice(0, max).map(function (x) { return '<div class="ibar"><span class="k">' + esc(x[0]) + '</span><span class="tr3"><div style="width:' + Math.max(2, x[1] / top * 100) + '%"></div></span><span class="v">' + $$(x[1]) + '</span></div>'; }).join('');
     };
     h += '<section class="bsec"><h2 class="mbar"><span>BY CATEGORY</span></h2>' + bars(group(function (t) { return t.cat; }), 12) + '</section>';
     h += '<section class="bsec"><h2 class="mbar"><span>TOP MERCHANTS</span></h2>' + bars(group(function (t) { return t.merchant; }), 8) + '</section>';
@@ -1773,7 +1773,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 7c9fbe199ff9</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 8a8ee839b7b7</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
