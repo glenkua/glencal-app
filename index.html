@@ -252,7 +252,9 @@ main { overflow-x: hidden; max-width: 100vw; }
 .sgt tr:first-child td { color: var(--muted); font-weight: 700; }
 .mt tr.hl td { color: var(--amber); font-weight: 700; }
 /* watchlist: Bloomberg-style worksheet and 2x2 charts */
-#wchips { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)) 1.3fr; gap: 0.3rem; overflow: visible; }
+#wchips { display: block; overflow: visible; }
+#wchips .wvrow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.3rem; margin-bottom: 0.3rem; }
+#wchips .wrrow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)) 1.3fr; gap: 0.3rem; }
 #wchips .chip { text-align: center; padding: 0.42rem 0.1rem; }
 .wgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 0.5rem 0 0.7rem; background: #1f1f1f; border: 1px solid #1f1f1f; }
 .wc { background: #000; padding: 0.3rem 0.3rem 0.1rem; min-width: 0; }

@@ -154,7 +154,7 @@
     mailPins = data.mailPins || [];
     bookSeen = data.bookSeen || [];
     mailSeen = data.mailSeen || []; seenSet = {}; mailSeen.forEach(function (id) { seenSet[id] = 1; });
-    WL = data.watch && data.watch.list ? data.watch : JSON.parse(JSON.stringify(WL_DEFAULT));
+    WL = data.watch && data.watch.list ? data.watch : JSON.parse(JSON.stringify(WL_DEFAULT)); normWL();
     txns = []; txMeta = { v: 2, last: 0, failed: [] };   // insights removed: don't keep card data
     if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
     Tools.setTape(calcTape);
@@ -288,9 +288,17 @@
   // =====================================================================
   // Watchlist: a Bloomberg-style worksheet with four charts on top
   // =====================================================================
-  var WL_DEFAULT = { list: ['USDSGD', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'SPX', 'NDX', 'DOW', 'UST 2Y', 'UST 5Y', 'UST 10Y', 'UST 30Y'], charts: ['USDSGD', 'USDJPY', 'SPX', 'UST 10Y'], range: '1M', dma: false };
+  var WL_DEFAULT = { list: ['USDSGD', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'SPX', 'NDX', 'DOW', 'UST 2Y', 'UST 5Y', 'UST 10Y', 'UST 30Y'], views: [['USDSGD', 'USDJPY', 'SPX', 'UST 10Y'], [], []], view: 0, range: '1M', dma: false };
+  function normWL() {   // older saves: one chart set and a 1W range
+    if (!WL.views) { WL.views = [WL.charts || [], [], []]; WL.view = 0; }
+    delete WL.charts;
+    while (WL.views.length < 3) WL.views.push([]);
+    if (!(WL.view >= 0 && WL.view < 3)) WL.view = 0;
+    if (!WRANGES.some(function (r) { return r[0] === WL.range; })) WL.range = '1M';
+  }
+  function vch() { return WL.views[WL.view]; }
   var WL = JSON.parse(JSON.stringify(WL_DEFAULT));
-  var WRANGES = [['1D', 'hist-1d'], ['1W', 'hist-1w'], ['1M', 'hist-2y', 31], ['3M', 'hist-2y', 92], ['6M', 'hist-2y', 183], ['1Y', 'hist-2y', 366]];
+  var WRANGES = [['1D', 'hist-1d'], ['1M', 'hist-2y', 31], ['3M', 'hist-2y', 92], ['6M', 'hist-2y', 183], ['1Y', 'hist-2y', 366], ['5Y', 'hist-5y', 1827, 5]];   // last: weekly points (5 trading days each)
   var MAS = [[50, '#5fd0e8'], [100, '#c792ff'], [200, '#ff6b6b']];   // 50 / 100 / 200-day moving averages
   var LINE = '#f2f2f2';                                               // price line: white, so it stands apart from the amber UI
   var HIST = {};   // file -> { at, data, loading }
@@ -312,24 +320,26 @@
       .then(function () { h.loading = false; if (tab === 'watch') drawCharts(); });
   }
   function renderWatchChips() {
-    $('wchips').innerHTML = WRANGES.map(function (r) {
+    $('wchips').innerHTML = '<div class="wvrow">' + [0, 1, 2].map(function (i) {
+      return '<button class="chip" type="button" data-wv="' + i + '" aria-pressed="' + (WL.view === i) + '">VIEW ' + (i + 1) + '<span class="n">' + WL.views[i].length + '</span></button>';
+    }).join('') + '</div><div class="wrrow">' + WRANGES.map(function (r) {
       return '<button class="chip" type="button" data-wr="' + r[0] + '" aria-pressed="' + (WL.range === r[0]) + '">' + r[0] + '</button>';
-    }).join('') + '<button class="chip" type="button" data-wdma="1" aria-pressed="' + !!WL.dma + '">DMA</button>';
+    }).join('') + '<button class="chip" type="button" data-wdma="1" aria-pressed="' + !!WL.dma + '">DMA</button></div>';
   }
   function unpack(s) { return s ? s.m.map(function (m, i) { return { t: (s.t0 + m * 60) * 1000, c: s.c[i] }; }) : null; }
-  function dailyWithMA(k) {   // daily closes with 50/100/200-day averages
-    var h = HIST['hist-2y'], d = unpack(h && h.data && h.data.s[k]);
+  function dailyWithMA(k, file, per) {   // closes with 50/100/200-day averages; weekly points use 10/20/40 weeks
+    var h = HIST[file || 'hist-2y'], d = unpack(h && h.data && h.data.s[k]);
     if (!d) return null;
     MAS.forEach(function (ma) {
-      var n = ma[0], sum = 0;
-      d.forEach(function (p, i) { sum += p.c; if (i >= n) sum -= d[i - n].c; p['ma' + n] = i >= n - 1 ? sum / n : null; });
+      var n = Math.round(ma[0] / (per || 1)), sum = 0;
+      d.forEach(function (p, i) { sum += p.c; if (i >= n) sum -= d[i - n].c; p['ma' + ma[0]] = i >= n - 1 ? sum / n : null; });
     });
     return d;
   }
   function series(k) {
     var r = WRANGES.filter(function (x) { return x[0] === WL.range; })[0];
     if (r[2]) {
-      var d = dailyWithMA(k); if (!d) return null;
+      var d = dailyWithMA(k, r[1], r[3]); if (!d) return null;
       var from = d.length ? d[d.length - 1].t - r[2] * 864e5 : 0;
       return { pts: d.filter(function (p) { return p.t >= from; }), daily: true };
     }
@@ -363,7 +373,7 @@
     function lbl(x) {
       var d = new Date(x.t);
       if (WL.range === '1D') return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-      return d.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + (WL.range === '1Y' ? " '" + String(d.getFullYear()).slice(2) : '');
+      return d.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + (WL.range === '1Y' || WL.range === '5Y' ? " '" + String(d.getFullYear()).slice(2) : '');
     }
     [0, Math.floor((p.length - 1) / 2), p.length - 1].forEach(function (i, j) {
       o += '<text x="' + X(p[i], i).toFixed(1) + '" y="' + (H - 2) + '" fill="#777" font-size="9" font-family="Menlo,monospace" text-anchor="' + ['start', 'middle', 'end'][j] + '">' + lbl(p[i]) + '</text>';
@@ -403,7 +413,7 @@
   }
   function drawCharts() {
     var grid = $('wgrid'); if (!grid) return;
-    var keys = WL.list.filter(function (k) { return WL.charts.indexOf(k) >= 0; }).slice(0, 4);
+    var keys = WL.list.filter(function (k) { return vch().indexOf(k) >= 0; }).slice(0, 4);
     var r = WRANGES.filter(function (x) { return x[0] === WL.range; })[0];
     loadHist(r[1]); if (WL.dma) loadHist('hist-2y');
     var cells = '';
@@ -420,7 +430,7 @@
   }
   function renderWatch() {
     var rows = WL.list.map(function (k) {
-      var q = quote(k), f = q ? fmtQ(q) : null, on = WL.charts.indexOf(k) >= 0;
+      var q = quote(k), f = q ? fmtQ(q) : null, on = vch().indexOf(k) >= 0;
       return '<tr><td class="s" data-wrow="' + esc(k) + '">' + esc(k) + (q ? '<span>' + esc(q.name || '') + '</span>' : '') + '</td>' +
         '<td class="px">' + (q && q.price != null ? wnum(q.price, dpFor(q)) : '—') + '</td>' +
         '<td class="' + (f ? f.cls : 'fl') + '">' + (f ? f.ch : '') + '</td>' +
@@ -430,14 +440,14 @@
       '<table class="wl"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"></colgroup><thead><tr><th>SECURITY</th><th>LAST PX</th><th>1D %CHG</th><th>CHT</th></tr></thead><tbody>' + rows +
       '<tr class="wadd"><td colspan="4"><button type="button" data-wadd="1">+ Add security</button></td></tr></tbody></table>' +
       '<p class="wfoot">Delayed prices from ' + esc((MKT && MKT.source) || 'Yahoo Finance') + (MKT && MKT.updated ? ', ' + esc(MKT.updated.slice(11)) + ' SGT' : '') + '. Yields show the change in basis points. ' +
-      (WL.dma ? 'DMA: 50-day (blue), 100-day (purple) and 200-day (red) moving averages of daily closes; on 1D and 1W they show as dashed levels. ' : '') + 'Tap a security to move or remove it. Pull down to refresh.</p>';
+      (WL.dma ? 'DMA: 50-day (blue), 100-day (purple) and 200-day (red) moving averages of daily closes; on 1D they show as dashed levels; on 5Y (weekly points) they use 10, 20 and 40 weeks. ' : '') + 'Tap a security to move or remove it. Pull down to refresh.</p>';
     drawCharts();
   }
   function toggleChart(k) {
-    var i = WL.charts.indexOf(k);
-    if (i >= 0) WL.charts.splice(i, 1);
-    else { WL.charts.push(k); if (WL.charts.length > 4) { var out = WL.charts.shift(); flashToast('Up to 4 charts: ' + out + ' swapped out'); } }
-    persist(); renderWatch();
+    var c = vch(), i = c.indexOf(k);
+    if (i >= 0) c.splice(i, 1);
+    else { c.push(k); if (c.length > 4) { var out = c.shift(); flashToast('Up to 4 charts per view: ' + out + ' swapped out'); } }
+    persist(); renderWatchChips(); renderWatch();
   }
   function wRowSheet(k) {
     var q = quote(k), i = WL.list.indexOf(k);
@@ -476,7 +486,7 @@
     b = e.target.closest('[data-wdel]');
     if (b) {
       var d = b.getAttribute('data-wdel');
-      WL.list = WL.list.filter(function (x) { return x !== d; }); WL.charts = WL.charts.filter(function (x) { return x !== d; });
+      WL.list = WL.list.filter(function (x) { return x !== d; }); WL.views = WL.views.map(function (v) { return v.filter(function (x) { return x !== d; }); });
       persist(); renderWatch(); closeSheet(); flashToast(d + ' removed');
     }
   });
@@ -486,6 +496,8 @@
     b = e.target.closest('[data-wrow]'); if (b) wRowSheet(b.getAttribute('data-wrow'));
   });
   $('wchips').addEventListener('click', function (e) {
+    var v = e.target.closest('[data-wv]');
+    if (v) { WL.view = Number(v.getAttribute('data-wv')); persist(); renderWatchChips(); renderWatch(); return; }
     var b = e.target.closest('[data-wr]');
     if (b) { WL.range = b.getAttribute('data-wr'); persist(); renderWatchChips(); drawCharts(); return; }
     if (e.target.closest('[data-wdma]')) { WL.dma = !WL.dma; persist(); renderWatchChips(); renderWatch(); }
@@ -2253,7 +2265,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 875b3e97becd</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 45a624a63dbe</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
