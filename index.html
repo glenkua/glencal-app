@@ -129,6 +129,8 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .bdaily .dk { color: var(--amber); font-family: var(--mono); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; margin-right: 0.35rem; }
 .bdaily .ds { white-space: nowrap; }
 .bdaily.q { font-style: italic; }
+.bhead { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.bhead .key { flex: none; }
 .bhead { padding: 0.8rem 0 0.2rem; font-size: 1.05rem; font-weight: 800; letter-spacing: 0.1em; color: var(--fg); }
 .bsec { margin-top: 0.9rem; }
 .bnone { color: var(--muted); padding: 0.35rem 0; margin: 0; }
@@ -366,7 +368,7 @@ textarea { min-height: 9rem; resize: vertical; }
   <header class="bar" id="bar"><div class="in">
     <div id="clocks" class="clocks" aria-label="World clocks"></div>
     <button id="tick" class="tick" type="button" aria-label="Market prices" hidden><span id="tktrack" class="tk-track"></span></button>
-    <div class="r1">
+    <div class="r1" id="r1">
       <span class="brand" id="brandtxt">GLENCAL</span>
       <span class="clock" id="clock"></span>
       <button id="ask" class="key" type="button" hidden>ASK</button>

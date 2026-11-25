@@ -366,7 +366,8 @@
     var now = new Date(), h = now.getHours(), l = dLabel(todayISO), tmr = GC.iso(GC.addDays(now, 1));
     var byTime = function (a, b) { return (a.time || '') < (b.time || '') ? -1 : 1; };
     var mineOf = function (d) { return allEntries().filter(function (e) { return e.date === d && !(e.bill && !e.isDue); }).sort(byTime); };
-    var html = '<div class="bhead">' + (h < 12 ? 'GOOD MORNING' : h < 18 ? 'GOOD AFTERNOON' : 'GOOD EVENING') + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + '</div>';
+    var html = '<div class="bhead"><span>' + (h < 12 ? 'GOOD MORNING' : h < 18 ? 'GOOD AFTERNOON' : 'GOOD EVENING') + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + '</span>' +
+      '<button class="key" type="button" data-bmenu="1" aria-label="Menu">···' + (updateReady ? ' ●' : '') + '</button></div>';
     if (typeof DAILY !== 'undefined' && DAILY.length) {   // one item a day, the same all day
       var dayNo = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(2026, 0, 1)) / 864e5);
       var it = DAILY[((dayNo * 37) % DAILY.length + DAILY.length) % DAILY.length];   // stepping by 37 mixes the topics
@@ -440,6 +441,7 @@
     $('brief').innerHTML = html;
   }
   $('brief').addEventListener('click', function (e) {
+    if (e.target.closest('[data-bmenu]')) { showMenu(); return; }
     var bm = e.target.closest('[data-bmid]'); if (bm) { openMail(bm.getAttribute('data-bmid')); return; }
     if (e.target.closest('[data-bgo]')) { Gmail.start(); return; }
     var b = e.target.closest('[data-bid]'); if (!b) return;
@@ -1004,7 +1006,9 @@
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
     $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt || ml || ins; $('cmdrow').hidden = tl || br || ins;
     $('ask').hidden = true;   // assistant switched off for now
-    $('brandtxt').hidden = !br; $('jump').hidden = true;   // TODAY button removed $('add').hidden = !cal;
+    $('brandtxt').hidden = !br; $('jump').hidden = true;   // TODAY button removed
+    $('add').hidden = !cal;                                   // + ADD only on the Calendar
+    $('r1').hidden = br;                                      // the Brief has no top row; its menu sits by the greeting
     $('q').value = ''; $('qclear').hidden = true;
     if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
     else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); SC().scrollTop = 0; }
@@ -2039,7 +2043,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version dc3784330de9</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 90effa370605</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2140,7 +2144,7 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(function (reg) {
       swReg = reg;
-      function check() { if (reg.waiting && navigator.serviceWorker.controller) { updateReady = true; $('more').textContent = '··· ●'; } }
+      function check() { if (reg.waiting && navigator.serviceWorker.controller) { updateReady = true; $('more').textContent = '··· ●'; if (tab === 'brief') renderBrief(); } }
       check();
       reg.addEventListener('updatefound', function () {
         var w = reg.installing;
