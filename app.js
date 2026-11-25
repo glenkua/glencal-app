@@ -176,7 +176,7 @@
     closeSheet();
     $('list').innerHTML = '';
     askHistory = []; pending = null;
-    calcTape = []; Tools.setTape([]); notes = []; txns = []; mailPins = []; MAIL.list = null;
+    calcTape = []; Tools.setTape([]); notes = []; txns = []; mailPins = []; MAIL.list = null; mailCache = {}; mailCacheOrder = [];
     showUnlock();
   }
 
@@ -754,31 +754,61 @@
     if (j >= 0 && j < order.length) { openMail(order[j]); return; }
     if (dir > 0 && MAIL.next) { openSheet('<h2>Mail</h2><p>Loading older…</p>'); loadOlder(); var tries = 0, wait = setInterval(function () { tries++; var o2 = mailOrder(); if (o2.length > order.length || tries > 40) { clearInterval(wait); if (o2[j]) openMail(o2[j]); else closeSheet(); } }, 250); }
   }
+  // ---- email text: short links, no image placeholders or invisible spacers ----
+  function mailBodyHTML(text) {
+    var t = String(text || '').slice(0, 15000)
+      .replace(/[\u034F\u00AD\u200B-\u200F\u2028\u2029\u202F\u2060-\u2064\uFEFF]/g, '')   // invisible spacers newsletters use
+      .replace(/\[(?:image|cid|img)[^\]]*\]/gi, '')                                      // image placeholders
+      .replace(/<(https?:\/\/[^>\s]+)>/g, ' $1 ')
+      .replace(/\[\s*(https?:\/\/[^\]\s]+)\s*\]/g, ' $1 ')
+      .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
+    var out = '', last = 0, re = /https?:\/\/[^\s<>"')\]]+/g, mm;
+    while ((mm = re.exec(t))) {
+      out += esc(t.slice(last, mm.index));
+      var url = mm[0].replace(/[.,;:!?]+$/, ''), host = '';
+      try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { host = 'link'; }
+      out += '<a class="mlink" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">🔗 ' + esc(host) + '</a>';
+      last = mm.index + url.length;
+    }
+    return out + esc(t.slice(last));
+  }
+  var mailCache = {}, mailCacheOrder = [];
+  function cacheMail(m) { if (!mailCache[m.id]) { mailCacheOrder.push(m.id); if (mailCacheOrder.length > 30) delete mailCache[mailCacheOrder.shift()]; } mailCache[m.id] = m; }
+  function fetchMail(id) { return mailCache[id] ? Promise.resolve(mailCache[id]) : Gmail.full(id).then(function (m) { cacheMail(m); return m; }); }
+  function mailSheet(m, full, order, pos) {
+    var d = new Date(m.date), l = dLabel(GC.iso(d));
+    var sum = '';
+    if (full) {
+      var sm = mailSummary(m), line = sm.lines[0] || '';
+      if (line.length > 120) line = line.slice(0, 117).replace(/\s+\S*$/, '') + '…';
+      if (line || sm.facts.length) sum = '<div class="msum">' + (line ? '<p>' + esc(line) + '</p>' : '') + (sm.facts.length ? '<p class="mfacts">' + sm.facts.slice(0, 3).map(esc).join(' · ') + '</p>' : '') + '</div>';
+    }
+    openSheet('<h2 style="text-transform:none;letter-spacing:0">' + esc(m.subject) + '</h2>' +
+      '<p class="small">' + esc(m.from) + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + '</p>' + sum +
+      '<div class="mnav"><button class="btn" type="button" data-act="m-prev"' + (pos <= 0 ? ' disabled' : '') + '>‹ Newer</button>' +
+        '<span class="small">' + (pos >= 0 ? (pos + 1) + ' / ' + order.length + (MAIL.next ? '+' : '') : '') + ' · swipe ‹ ›</span>' +
+        '<button class="btn" type="button" data-act="m-next"' + (pos < 0 || (pos >= order.length - 1 && !MAIL.next) ? ' disabled' : '') + '>Older ›</button></div>' +
+      '<div class="mbody">' + (full ? mailBodyHTML(m.text || m.snippet) : esc(m.snippet || '') + '<p class="small">Loading the full email…</p>') + '</div>' +
+      '<div class="actions"><a class="btn grow" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId || m.id) + '" target="_blank" rel="noopener noreferrer">Open in Gmail</a>' +
+      '<button class="btn" type="button" data-act="m-note">Save to Notes</button><button class="btn" type="button" data-act="m-events">Make events</button>' +
+      '<button class="btn primary" type="button" data-act="close">Done</button></div>');
+  }
   function openMail(id) {
     mailNavId = id; markSeen(id);
     if (tab === 'mail') renderMail(); else if (tab === 'brief') renderBrief();
     var order = mailOrder(), pos = order.indexOf(id);
-    openSheet('<h2>Mail</h2><p>Loading…</p>');
-    Gmail.full(id).then(function (m) {
-      if (mailNavId !== id) return;   // you've already swiped on
+    var meta = (MAIL.list || []).concat(mailPins).filter(function (x) { return x.id === id; })[0];
+    if (mailCache[id]) { openMailMsg = mailCache[id]; mailSheet(mailCache[id], true, order, pos); }
+    else if (meta) { openMailMsg = meta; mailSheet(meta, false, order, pos); }   // header and preview straight away
+    else openSheet('<h2>Mail</h2><p>Loading…</p>');
+    fetchMail(id).then(function (m) {
+      if (mailNavId !== id) return;   // already swiped on
       openMailMsg = m;
-      var d = new Date(m.date), l = dLabel(GC.iso(d));
-      openSheet('<h2 style="text-transform:none;letter-spacing:0">' + esc(m.subject) + '</h2>' +
-        '<p class="small">' + esc(m.from) + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + '</p>' +
-        (function () {
-          var sm = mailSummary(m);
-          if (!sm.lines.length && !sm.facts.length) return '';
-          return '<div class="msum"><span class="small">QUICK SUMMARY</span>' + sm.lines.map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('') +
-            (sm.facts.length ? '<p class="mfacts">' + sm.facts.map(esc).join(' · ') + '</p>' : '') + '</div>';
-        })() +
-        '<div class="mnav"><button class="btn" type="button" data-act="m-prev"' + (pos <= 0 ? ' disabled' : '') + '>‹ Newer</button>' +
-          '<span class="small">' + (pos >= 0 ? (pos + 1) + ' / ' + order.length + (MAIL.next ? '+' : '') : '') + ' · swipe ‹ ›</span>' +
-          '<button class="btn" type="button" data-act="m-next"' + (pos < 0 || (pos >= order.length - 1 && !MAIL.next) ? ' disabled' : '') + '>Older ›</button></div>' +
-        '<div class="mbody">' + esc((m.text || m.snippet || '').slice(0, 12000)) + '</div>' +
-        '<div class="actions"><a class="btn grow" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId) + '" target="_blank" rel="noopener noreferrer">Open in Gmail</a>' +
-        '<button class="btn" type="button" data-act="m-note">Save to Notes</button><button class="btn" type="button" data-act="m-events">Make events</button>' +
-        '<button class="btn primary" type="button" data-act="close">Done</button></div>');
-    }, function (e) { openSheet('<h2>Mail</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>'); });
+      var sc = $('sheet').scrollTop;
+      mailSheet(m, true, mailOrder(), mailOrder().indexOf(id));
+      $('sheet').scrollTop = sc;
+      [order[pos + 1], order[pos - 1]].forEach(function (nid) { if (nid && !mailCache[nid]) fetchMail(nid).catch(function () {}); });   // ready for the next swipe
+    }, function (e) { if (mailNavId === id) openSheet('<h2>Mail</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>'); });
   }
 
   // =====================================================================
@@ -1984,7 +2014,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version df95ce75a41b</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 240edd14438e</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
