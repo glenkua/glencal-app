@@ -321,7 +321,7 @@
   }
   function renderWatchChips() {
     $('wchips').innerHTML = '<div class="wvrow">' + [0, 1, 2].map(function (i) {
-      return '<button class="chip" type="button" data-wv="' + i + '" aria-pressed="' + (WL.view === i) + '">VIEW ' + (i + 1) + '<span class="n">' + WL.views[i].length + '</span></button>';
+      return '<button class="chip" type="button" data-wv="' + i + '" aria-pressed="' + (WL.view === i) + '">VIEW ' + (i + 1) + '</button>';
     }).join('') + '</div><div class="wrrow">' + WRANGES.map(function (r) {
       return '<button class="chip" type="button" data-wr="' + r[0] + '" aria-pressed="' + (WL.range === r[0]) + '">' + r[0] + '</button>';
     }).join('') + '<button class="chip" type="button" data-wdma="1" aria-pressed="' + !!WL.dma + '">DMA</button></div>';
@@ -2280,7 +2280,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version e4755d8a7e96</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version b0fbc9c3739b</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
