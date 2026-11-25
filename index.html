@@ -180,6 +180,12 @@ main { overflow-x: hidden; max-width: 100vw; }
 .mrow .ms { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mrow .mp { color: var(--muted); font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mrow.read .mf, .mrow.read .ms { font-weight: 400; color: var(--muted); }
+/* Brief mail rows: same look as the ECON rows */
+.bmail .mrow { padding: 0.3rem 0; grid-template-columns: 3.9em minmax(0, 1fr); column-gap: 0.35rem; }
+.bmail .mrow .mt2 { font-size: 1rem; }
+.bmail .mrow .mf, .bmail .mrow .ms { font-size: 1rem; font-weight: 400; }
+.bmail .mrow .mf { color: var(--fg); }
+.bmail .mrow.read .mf, .bmail .mrow.read .ms { color: var(--muted); }
 .mrow .mf.unread::before { content: "● "; color: var(--amber); font-size: 0.7rem; }
 /* open email: fixed height, body scrolls inside */
 .sheet.mailsheet { height: 70vh; max-height: 70vh; }

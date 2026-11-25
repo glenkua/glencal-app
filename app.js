@@ -562,7 +562,7 @@
       if ((!BMAIL.list || Date.now() - BMAIL.at > 5 * 60000) && !BMAIL.loading) loadBriefMail();
       var ml2 = BMAIL.list || [];
       html += '<section class="bsec"><h2 class="mbar"><span>MAIL · PAST 7 DAYS</span><span class="n">' + (BMAIL.list ? BMAIL.list.filter(isUnread).length + ' unread' : '') + '</span></h2>' +
-        (ml2.length ? '<div class="' + (ml2.length > 3 ? 'bscroll' : '') + '">' + ml2.map(function (m) {
+        (ml2.length ? '<div class="bmail' + (ml2.length > 3 ? ' bscroll' : '') + '">' + ml2.map(function (m) {
           return '<button type="button" class="mrow' + (isUnread(m) ? '' : ' read') + '" data-bmid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
             '<span><span class="mf' + (isUnread(m) ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></button>';
         }).join('') + '</div>' + (ml2.length > 3 ? '<div class="bmore">↓ scroll for ' + (ml2.length - 3) + ' more</div>' : '')
@@ -571,8 +571,8 @@
       html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span></h2><p class="bnone"><button class="btn" type="button" data-bgo="1">Sign in to Gmail</button></p></section>';
     }
 
-    // ECON: released in the last 3 hours, or due in the next 24
-    var lo = stamp(new Date(now - 3 * 3600e3)), hi = stamp(new Date(now.getTime() + 24 * 3600e3));
+    // ECON: only what's still to come in the next 24 hours (released data stays in the ECON calendar)
+    var lo = stamp(now), hi = stamp(new Date(now.getTime() + 24 * 3600e3));
     var econ = financeItems().filter(function (e) { var k = e.date + ' ' + (e.time || '12:00'); return k >= lo && k <= hi; })
       .sort(function (a, b) { return (a.date + (a.time || '12:00')) < (b.date + (b.time || '12:00')) ? -1 : 1; });
     html += '<section class="bsec"><h2 class="mbar"><span>ECON · NEXT 24H</span><span class="n">' + econ.length + '</span></h2>' +
@@ -2221,7 +2221,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c350ec2d0183</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 1420fe9a3f8a</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
