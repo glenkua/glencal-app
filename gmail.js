@@ -67,6 +67,16 @@ var Gmail = (function () {
       }
       return page('');
     },
+    // one page of a search: { list: [...messages with sender/subject], next: token for the next page or '' }
+    page: function (q, n, tok) {
+      var self = this;
+      return self.api('messages?maxResults=' + (n || 40) + (q ? '&q=' + encodeURIComponent(q) : '') + (tok ? '&pageToken=' + tok : '')).then(function (d) {
+        var ids = (d.messages || []).map(function (m) { return m.id; });
+        return self.pool(ids, 8, function (id) { return self.meta(id); }).then(function (l) {
+          return { list: l.filter(Boolean).sort(function (a, b) { return b.date - a.date; }), next: d.nextPageToken || '' };
+        });
+      });
+    },
     meta: function (id) {
       return this.api('messages/' + id + '?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date').then(function (x) {
         var h = {}; (x.payload && x.payload.headers || []).forEach(function (y) { h[y.name] = y.value; });

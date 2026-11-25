@@ -372,7 +372,7 @@
 
     // mail: latest Primary emails (only while signed in)
     if (Gmail.token()) {
-      if (!MAIL.list && !MAIL.loading && MAIL.filter === 'primary') loadMail();
+      if (!MAIL.list && !MAIL.loading) loadMail();
       var ml2 = (MAIL.list || []).slice(0, 12);
       html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span><span class="n">' + (MAIL.list ? MAIL.list.filter(function (m) { return m.unread; }).length + ' unread' : '') + '</span></h2>' +
         (ml2.length ? '<div class="' + (ml2.length > 3 ? 'bscroll' : '') + '">' + ml2.map(function (m) {
@@ -586,11 +586,11 @@
   // =====================================================================
   // Mail (Gmail, read-only). Emails are fetched to the phone and shown; they are not stored.
   // =====================================================================
-  var MAIL = { list: null, filter: 'primary', q: '', loading: false, err: '' };
-  var MAIL_CHIPS = [['primary', 'Primary'], ['unread', 'Unread'], ['banks', '🏦 Banks & bills'], ['all', 'All mail']];
+  var MAIL = { list: null, filter: 'all', q: '', loading: false, err: '', next: '', more: false };
+  var MAIL_CHIPS = [['all', 'All mail'], ['inbox', 'Inbox'], ['unread', 'Unread'], ['banks', '🏦 Banks & bills']];
   var BANK_Q = '(from:dbs.com OR from:posb.com.sg OR from:uob.com.sg OR from:citibank.com OR from:citi.com OR from:hsbc.com.sg OR from:trustbank.sg OR from:ocbc.com OR from:sc.com OR from:spgroup.com.sg OR subject:(statement OR bill OR "payment due" OR transaction))';
   function mailQuery() {
-    var base = { primary: 'in:inbox category:primary', unread: 'in:inbox is:unread', banks: BANK_Q, all: 'in:inbox' }[MAIL.filter];
+    var base = { all: '', inbox: 'in:inbox', unread: 'is:unread', banks: BANK_Q, primary: 'in:inbox category:primary' }[MAIL.filter];
     return (base + (MAIL.q ? ' ' + MAIL.q : '')).trim();
   }
   function mailWhen(ms) {
@@ -600,8 +600,17 @@
   function loadMail() {
     if (!Gmail.token()) { MAIL.err = 'signin'; renderMail(); if (tab === 'brief') renderBrief(); return Promise.resolve(); }
     MAIL.loading = true; MAIL.err = ''; if (tab === 'mail') renderMail();
-    return Gmail.list(mailQuery(), 40).then(function (l) { MAIL.list = l; }, function (e) { MAIL.err = e.message || String(e); })
+    return Gmail.page(mailQuery(), 40, '').then(function (r) { MAIL.list = r.list; MAIL.next = r.next; }, function (e) { MAIL.err = e.message || String(e); })
       .then(function () { MAIL.loading = false; if (tab === 'mail') renderMail(); if (tab === 'brief') renderBrief(); });
+  }
+  function loadOlder() {   // next 40, all the way back
+    if (!MAIL.next || MAIL.more || !Gmail.token()) return;
+    MAIL.more = true; if (tab === 'mail') renderMail();
+    Gmail.page(mailQuery(), 40, MAIL.next).then(function (r) {
+      var seen = {}; (MAIL.list || []).forEach(function (m) { seen[m.id] = 1; });
+      MAIL.list = (MAIL.list || []).concat(r.list.filter(function (m) { return !seen[m.id]; }));
+      MAIL.next = r.next;
+    }, function (e) { MAIL.err = e.message || String(e); }).then(function () { MAIL.more = false; if (tab === 'mail') renderMail(); });
   }
   function signinCard(why) {
     return '<div class="mcard"><b>Connect Gmail</b><p class="small">' + esc(why) + ' You sign in on Google\'s own page; access is read-only and your emails go straight between this iPhone and Google. Google keeps you signed in for about an hour at a time.</p>' +
@@ -625,7 +634,12 @@
         '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span><span class="mp">' + esc(m.snippet) + '</span></span></button>';
     });
     if (MAIL.list && !MAIL.list.length) h += '<p class="empty">No emails here.</p>';
+    if (MAIL.list && MAIL.list.length) h += MAIL.next
+      ? '<div class="actions" style="justify-content:center;margin:0.8rem 0"><button class="btn" type="button" data-older="1"' + (MAIL.more ? ' disabled' : '') + '>' + (MAIL.more ? 'Loading older…' : 'Load older') + '</button></div>'
+      : '<p class="empty">End of your mail.</p>';
+    var y = SC().scrollTop;
     $('mail').innerHTML = h;
+    SC().scrollTop = y;
   }
   var openMailMsg = null;
   function openMail(id) {
@@ -816,7 +830,9 @@
   $('tab-notes').addEventListener('click', function () { setTab('notes'); });
   $('tab-mail').addEventListener('click', function () { setTab('mail'); });
   $('tab-ins').addEventListener('click', function () { setTab('ins'); });
-  $('mail').addEventListener('click', function (e) { var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
+  // older mail loads by itself when you scroll near the bottom
+  SC().addEventListener('scroll', function () { if (tab === 'mail' && MAIL.next && !MAIL.more && SC().scrollTop + SC().clientHeight > SC().scrollHeight - 600) loadOlder(); }, { passive: true });
+  $('mail').addEventListener('click', function (e) { if (e.target.closest('[data-older]')) { loadOlder(); return; } var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
   $('ins').addEventListener('click', function (e) { var g = e.target.closest('[data-act]'); if (!g) return; if (g.getAttribute('data-act') === 'gmail-go') Gmail.start(); if (g.getAttribute('data-act') === 'ins-scan') scanTxns(); });
   $('mchips').addEventListener('click', function (e) { var b = e.target.closest('[data-m]'); if (!b) return; MAIL.filter = b.getAttribute('data-m'); renderMailChips(); loadMail(); SC().scrollTop = 0; });
   $('ichips').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (!b) return; INS.period = b.getAttribute('data-i'); renderInsChips(); renderInsights(); SC().scrollTop = 0; });
@@ -1779,7 +1795,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 67ca57cc4b74</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 746c7892cd9a</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
