@@ -599,6 +599,7 @@ var Tools = (function () {
       root.addEventListener('change', onInput);
     },
     chips: chipsHTML,
+    rates: function () { return usdValues().u; },
     setTape: function (list) { tape = (list || []).filter(function (t) { return t && isFinite(t.r); }).slice(0, TAPE_MAX); ans = tape.length ? tape[0].r : 0; },
     select: function (t) { tool = t; draw(); },
     draw: draw,

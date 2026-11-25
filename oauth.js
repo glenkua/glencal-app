@@ -17,5 +17,5 @@
     sessionStorage.setItem('glencal.g.exp', String(Date.now() + (+p.expires_in || 3600) * 1000));
     sessionStorage.removeItem('glencal.g.state');
   } catch (e) {}
-  location.replace('./#gmail');
+  location.replace('./#mail');
 })();

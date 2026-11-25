@@ -31,9 +31,9 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
-  var rules = [], paid = {}, calcTape = [], notes = [];
+  var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] };
   function persist() {
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }) };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -150,6 +150,7 @@
     paid = data.paid || {};
     calcTape = data.calc || [];
     notes = data.notes || [];
+    txns = data.txns || []; txMeta = data.txMeta || { last: 0, failed: [] };
     Tools.setTape(calcTape);
     unlocked = true;
     todayISO = GC.iso(new Date());
@@ -159,7 +160,7 @@
     refresh();
     setTimeout(function () {
       setTab('brief');
-      if (location.hash === '#gmail') { history.replaceState(null, '', location.pathname); showGmail(); }
+      if (location.hash === '#gmail' || location.hash === '#mail') { history.replaceState(null, '', location.pathname); setTab('mail'); }
     }, 0);
   }
 
@@ -170,7 +171,7 @@
     closeSheet();
     $('list').innerHTML = '';
     askHistory = []; pending = null;
-    calcTape = []; Tools.setTape([]); notes = [];
+    calcTape = []; Tools.setTape([]); notes = []; txns = []; MAIL.list = null;
     showUnlock();
   }
 
@@ -369,6 +370,20 @@
     if (tom.length) html += '<div class="bsub">TOMORROW</div>' + briefRows(tom.slice(0, 4)) + (tom.length > 4 ? '<p class="bnone">+' + (tom.length - 4) + ' more</p>' : '');
     html += '</section>';
 
+    // mail: latest Primary emails (only while signed in)
+    if (Gmail.token()) {
+      if (!MAIL.list && !MAIL.loading && MAIL.filter === 'primary') loadMail();
+      var ml2 = (MAIL.list || []).slice(0, 12);
+      html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span><span class="n">' + (MAIL.list ? MAIL.list.filter(function (m) { return m.unread; }).length + ' unread' : '') + '</span></h2>' +
+        (ml2.length ? '<div class="' + (ml2.length > 3 ? 'bscroll' : '') + '">' + ml2.map(function (m) {
+          return '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-bmid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
+            '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></button>';
+        }).join('') + '</div>' + (ml2.length > 3 ? '<div class="bmore">↓ scroll for ' + (ml2.length - 3) + ' more</div>' : '')
+          : '<p class="bnone">' + (MAIL.loading ? 'Loading…' : 'No new mail.') + '</p>') + '</section>';
+    } else {
+      html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span></h2><p class="bnone"><button class="btn" type="button" data-bgo="1">Sign in to Gmail</button></p></section>';
+    }
+
     // ECON: released in the last 3 hours, or due in the next 24
     var lo = stamp(new Date(now - 3 * 3600e3)), hi = stamp(new Date(now.getTime() + 24 * 3600e3));
     var econ = financeItems().filter(function (e) { var k = e.date + ' ' + (e.time || '12:00'); return k >= lo && k <= hi; })
@@ -413,6 +428,8 @@
     $('brief').innerHTML = html;
   }
   $('brief').addEventListener('click', function (e) {
+    var bm = e.target.closest('[data-bmid]'); if (bm) { openMail(bm.getAttribute('data-bmid')); return; }
+    if (e.target.closest('[data-bgo]')) { Gmail.start(); return; }
     var b = e.target.closest('[data-bid]'); if (!b) return;
     var id = b.getAttribute('data-bid');
     if (id.indexOf('hol-') === 0) showHoliday(id);
@@ -566,16 +583,217 @@
     setBody(ta, v.slice(0, a) + ins + v.slice(a), a + ins.length);
   });
 
+  // =====================================================================
+  // Mail (Gmail, read-only). Emails are fetched to the phone and shown; they are not stored.
+  // =====================================================================
+  var MAIL = { list: null, filter: 'primary', q: '', loading: false, err: '' };
+  var MAIL_CHIPS = [['primary', 'Primary'], ['unread', 'Unread'], ['banks', '🏦 Banks & bills'], ['all', 'All mail']];
+  var BANK_Q = '(from:dbs.com OR from:posb.com.sg OR from:uob.com.sg OR from:citibank.com OR from:citi.com OR from:hsbc.com.sg OR from:trustbank.sg OR from:ocbc.com OR from:sc.com OR from:spgroup.com.sg OR subject:(statement OR bill OR "payment due" OR transaction))';
+  function mailQuery() {
+    var base = { primary: 'in:inbox category:primary', unread: 'in:inbox is:unread', banks: BANK_Q, all: 'in:inbox' }[MAIL.filter];
+    return (base + (MAIL.q ? ' ' + MAIL.q : '')).trim();
+  }
+  function mailWhen(ms) {
+    var d = new Date(ms), iso = GC.iso(d), hm = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    return iso === todayISO ? hm : (function () { var l = dLabel(iso); return l.day + ' ' + l.mon; })();
+  }
+  function loadMail() {
+    if (!Gmail.token()) { MAIL.err = 'signin'; renderMail(); if (tab === 'brief') renderBrief(); return Promise.resolve(); }
+    MAIL.loading = true; MAIL.err = ''; if (tab === 'mail') renderMail();
+    return Gmail.list(mailQuery(), 40).then(function (l) { MAIL.list = l; }, function (e) { MAIL.err = e.message || String(e); })
+      .then(function () { MAIL.loading = false; if (tab === 'mail') renderMail(); if (tab === 'brief') renderBrief(); });
+  }
+  function signinCard(why) {
+    return '<div class="mcard"><b>Connect Gmail</b><p class="small">' + esc(why) + ' You sign in on Google\'s own page; access is read-only and your emails go straight between this iPhone and Google. Google keeps you signed in for about an hour at a time.</p>' +
+      '<div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in with Google</button></div></div>';
+  }
+  function renderMailChips() {
+    $('mchips').innerHTML = MAIL_CHIPS.map(function (c) { return '<button class="chip" type="button" data-m="' + c[0] + '" aria-pressed="' + (MAIL.filter === c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
+  }
+  function renderMail() {
+    if (!Gmail.token()) { $('mail').innerHTML = signinCard('Read your Gmail here (and your Hotmail, if you forward it to Gmail).'); return; }
+    var h = '<div class="nmeta">' + (MAIL.loading ? 'Loading…' : MAIL.err ? '<span class="err">' + esc(MAIL.err) + '</span>' : (MAIL.list ? MAIL.list.length + ' emails' : '')) +
+      (MAIL.q ? ' · search: ' + esc(MAIL.q) : '') + ' · pull down to refresh</div>';
+    var lastDay = '';
+    (MAIL.list || []).forEach(function (m) {
+      var day = GC.iso(new Date(m.date));
+      if (day !== lastDay) { var l = dLabel(day); h += '<h2 class="mbar"><span>' + (day === todayISO ? 'TODAY · ' : '') + l.dow + ' ' + l.day + ' ' + l.mon + '</span></h2>'; lastDay = day; }
+      h += '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-mid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
+        '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span><span class="mp">' + esc(m.snippet) + '</span></span></button>';
+    });
+    if (MAIL.list && !MAIL.list.length) h += '<p class="empty">No emails here.</p>';
+    $('mail').innerHTML = h;
+  }
+  var openMailMsg = null;
+  function openMail(id) {
+    openSheet('<h2>Mail</h2><p>Loading…</p>');
+    Gmail.full(id).then(function (m) {
+      openMailMsg = m;
+      var d = new Date(m.date), l = dLabel(GC.iso(d));
+      openSheet('<h2 style="text-transform:none;letter-spacing:0">' + esc(m.subject) + '</h2>' +
+        '<p class="small">' + esc(m.from) + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + '</p>' +
+        '<div class="mbody">' + esc((m.text || m.snippet || '').slice(0, 12000)) + '</div>' +
+        '<div class="actions"><a class="btn grow" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId) + '" target="_blank" rel="noopener noreferrer">Open in Gmail</a>' +
+        '<button class="btn" type="button" data-act="m-note">Save to Notes</button><button class="btn" type="button" data-act="m-events">Make events</button>' +
+        '<button class="btn primary" type="button" data-act="close">Done</button></div>');
+    }, function (e) { openSheet('<h2>Mail</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>'); });
+  }
+
+  // =====================================================================
+  // Insights from card transaction alert emails (stored encrypted, like everything else)
+  // =====================================================================
+  var INS = { period: 'month', scanning: false, msg: '' };
+  var INS_CHIPS = [['month', 'This month'], ['last', 'Last month'], ['3m', '3 months'], ['6m', '6 months']];
+  var MCATS = [
+    ['Food & drinks', /grab ?food|foodpanda|deliveroo|restaurant|cafe|coffee|starbucks|kopi|mcdonald|kfc|burger|bakery|bar\b|bistro|kitchen|eatery|food|dining|sushi|ramen|pizza|toast box|ya kun|koufu|kopitiam/i],
+    ['Groceries', /fairprice|ntuc|cold storage|sheng siong|giant|redmart|don don donki|market|grocer|mustafa/i],
+    ['Transport', /grab|gojek|tada|comfort|cdg|zig|simplygo|transitlink|bus|mrt|taxi|shell|esso|caltex|spc|sinopec|parking|ez-?link|lta/i],
+    ['Subscriptions', /netflix|spotify|apple\.com|itunes|google \*|youtube|disney|openai|chatgpt|icloud|microsoft|adobe|prime video|audible|patreon|substack/i],
+    ['Shopping', /amazon|shopee|lazada|taobao|qoo10|uniqlo|zara|h&m|ikea|courts|harvey norman|challenger|best denki|decathlon|muji|charles|cotton on|watsons|guardian|sephora|takashimaya|isetan|tangs|robinsons/i],
+    ['Travel', /airline|airways|singapore air|scoot|jetstar|airasia|cathay|agoda|booking\.com|expedia|airbnb|hotel|trip\.com|klook|changi/i],
+    ['Bills & utilities', /sp services|sp group|singtel|starhub|m1 |circles|giga|insurance|aia|prudential|great eastern|income|town council|iras|cpf/i],
+    ['Health & fitness', /clinic|medical|hospital|dental|pharmacy|gym|fitness|anytime|virgin active|classpass|yoga/i],
+    ['Entertainment', /cinema|golden village|shaw|cathay cineplex|steam|playstation|nintendo|xbox|ticket|sistic|klook/i]
+  ];
+  var BANKS = [['DBS/POSB', /dbs\.com|posb/i], ['UOB', /uob/i], ['Citi', /citi/i], ['HSBC', /hsbc/i], ['Trust', /trustbank|trust\.bank/i], ['OCBC', /ocbc/i], ['StanChart', /\bsc\.com|standard chartered/i], ['Amex', /americanexpress|amex/i]];
+  var TX_TRIGGER = /(transaction|spent|purchase|charged|card (?:was|has been) used|has been used|debited|you(?:'ve| have)? made|payment of|transaction alert|card alert)/i;
+  var TX_SKIP = /\b(otp|one[- ]time (?:password|pin|code)|verification code|e-?statement|statement is ready|payment received|thank you for your payment|login|log in)\b/i;
+  var CCYS = 'SGD|S\\$|USD|US\\$|EUR|GBP|JPY|AUD|NZD|MYR|HKD|THB|IDR|CNY|CNH|KRW|INR|CHF|CAD';
+  // reads one alert email into { amt, ccy, merchant, card, bank } or null
+  function parseTxn(m) {
+    var text = (m.subject + '\n' + (m.text || m.snippet || '')).slice(0, 4000).replace(/\s+/g, ' ');
+    if (TX_SKIP.test(m.subject) || !TX_TRIGGER.test(text)) return null;
+    var am = new RegExp('(' + CCYS + ')\\s?([\\d,]+(?:\\.\\d{1,2})?)', 'i').exec(text) || /(\$)\s?([\d,]+\.\d{2})/.exec(text);
+    if (!am) return null;
+    var ccy = am[1].toUpperCase().replace('US$', 'USD').replace('S$', 'SGD');
+    if (ccy === '$') ccy = 'SGD';
+    var amt = parseFloat(am[2].replace(/,/g, ''));
+    if (!(amt > 0)) return null;
+    var after = text.slice(am.index + am[0].length, am.index + am[0].length + 160);
+    var mm = /\b(?:at|@|to|merchant:?|from)\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|at|was|has|is|if|ref|reference)\b|[.,;:()]|\s{2}|$)/i.exec(after)
+      || /\b(?:at|@|merchant:?)\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|was|has|is)\b|[.,;:()]|$)/i.exec(text);
+    var merchant = mm ? mm[1].trim().replace(/\s+/g, ' ') : '';
+    if (/^(your|the|a|an|card|account)$/i.test(merchant)) merchant = '';
+    var cm = /(?:ending(?:\s+(?:in|with))?|card\s*(?:no\.?|number)?\s*[x*•]+|[x*•]{4,})\s*[-:]?\s*(\d{4})\b/i.exec(text);
+    var bank = (BANKS.filter(function (b) { return b[1].test(m.fromEmail + ' ' + m.from); })[0] || [''])[0];
+    var refund = /\b(refund|reversal|reversed|credited|cashback)\b/i.test(text) && !/debited|spent|charged/i.test(text.slice(0, 200));
+    return { id: m.id, date: m.date, amt: refund ? -amt : amt, ccy: ccy, merchant: merchant || '(unknown)', card: cm ? cm[1] : '', bank: bank,
+             cat: (MCATS.filter(function (c) { return c[1].test(merchant + ' ' + m.subject); })[0] || ['Other'])[0] };
+  }
+  function toSGD(t) {
+    if (t.ccy === 'SGD') return t.amt;
+    var u = Tools.rates(), k = t.ccy === 'CNY' ? 'CNH' : t.ccy;
+    return u[k] && u.SGD ? t.amt * u[k] / u.SGD : NaN;
+  }
+  function scanTxns() {
+    if (!Gmail.token()) { INS.msg = ''; renderInsights(); return Promise.resolve(); }
+    if (INS.scanning) return Promise.resolve();
+    INS.scanning = true; INS.msg = 'Searching your mail for card alerts…'; renderInsights();
+    var days = txMeta.last ? Math.min(400, Math.ceil((Date.now() - txMeta.last) / 864e5) + 2) : 180;
+    var q = 'newer_than:' + days + 'd (transaction OR spent OR purchase OR "card alert" OR charged OR "has been used" OR debited OR "you made") -OTP -"one-time"';
+    var have = {}; txns.forEach(function (t) { have[t.id] = 1; }); (txMeta.failed || []).forEach(function (f) { have[f.id] = 1; });
+    return Gmail.ids(q, 500).then(function (ids) {
+      ids = ids.filter(function (id) { return !have[id]; });
+      INS.msg = 'Reading ' + ids.length + ' new email' + (ids.length === 1 ? '' : 's') + '…'; renderInsights();
+      return Gmail.pool(ids, 6, function (id) { return Gmail.full(id); });
+    }).then(function (msgs) {
+      var added = 0;
+      (msgs || []).forEach(function (m) {
+        if (!m) return;
+        var t = parseTxn(m);
+        if (t) { txns.push(t); added++; } else (txMeta.failed = txMeta.failed || []).push({ id: m.id, s: m.subject.slice(0, 80), f: m.from.slice(0, 40), d: m.date });
+      });
+      txMeta.failed = (txMeta.failed || []).slice(-300);
+      txMeta.last = Date.now(); persist();
+      INS.msg = added ? 'Added ' + added + ' transaction' + (added === 1 ? '' : 's') + '.' : 'No new card alerts found.';
+    }, function (e) { INS.msg = 'Scan failed: ' + (e.message || e); })
+      .then(function () { INS.scanning = false; renderInsights(); });
+  }
+  function periodRange(p) {
+    var n = new Date(), y = n.getFullYear(), mo = n.getMonth();
+    if (p === 'month') return [new Date(y, mo, 1), new Date(y, mo + 1, 1), new Date(y, mo - 1, 1), new Date(y, mo, 1)];
+    if (p === 'last') return [new Date(y, mo - 1, 1), new Date(y, mo, 1), new Date(y, mo - 2, 1), new Date(y, mo - 1, 1)];
+    var k = p === '3m' ? 3 : 6;
+    return [new Date(y, mo - k + 1, 1), new Date(y, mo + 1, 1), new Date(y, mo - 2 * k + 1, 1), new Date(y, mo - k + 1, 1)];
+  }
+  function renderInsChips() {
+    $('ichips').innerHTML = INS_CHIPS.map(function (c) { return '<button class="chip" type="button" data-i="' + c[0] + '" aria-pressed="' + (INS.period === c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
+  }
+  function renderInsights() {
+    var h = '';
+    if (!txns.length && !Gmail.token()) {
+      $('ins').innerHTML = signinCard('Insights are built from the card transaction alert emails your banks send.') +
+        '<p class="small" style="margin-top:0.8rem">Tip: in each bank\'s app, turn on email alerts for card transactions (many let you set the alert amount to $0.01) so every purchase is counted.</p>';
+      return;
+    }
+    h += '<div class="actions" style="margin-top:0.6rem"><span class="small grow">' + txns.length + ' transactions' + (txMeta.last ? ' · last scan ' + esc(mailWhen(txMeta.last)) : '') + (INS.msg ? '<br>' + esc(INS.msg) : '') + '</span>' +
+      (Gmail.token() ? '<button class="btn primary" type="button" data-act="ins-scan"' + (INS.scanning ? ' disabled' : '') + '>' + (INS.scanning ? 'Scanning…' : 'Scan mail') + '</button>'
+        : '<button class="btn primary" type="button" data-act="gmail-go">Sign in to scan</button>') + '</div>';
+    var r = periodRange(INS.period), inP = function (t, a, b) { return t.date >= +a && t.date < +b; };
+    var cur = txns.filter(function (t) { return inP(t, r[0], r[1]); }), prev = txns.filter(function (t) { return inP(t, r[2], r[3]); });
+    var sum = function (l) { return l.reduce(function (s2, t) { var v = toSGD(t); return s2 + (isFinite(v) ? v : 0); }, 0); };
+    var total = sum(cur), ptotal = sum(prev), $$ = function (v) { return '$' + fmt0(v); };
+    if (!cur.length) { $('ins').innerHTML = h + '<p class="empty">No card transactions found for this period' + (Gmail.token() ? '. Tap Scan mail.' : '.') + '</p>'; return; }
+    var chg = ptotal ? (total - ptotal) / ptotal * 100 : null;
+    var proj = '';
+    if (INS.period === 'month') { var n = new Date(), dim = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate(); proj = $$(total / n.getDate() * dim) + ' by month-end'; }
+    h += '<div class="kpis"><div><span>Spent (SGD)</span><b>' + $$(total) + '</b><i>' + cur.length + ' transactions</i></div>' +
+      '<div><span>vs previous</span><b>' + (chg == null ? '—' : (chg > 0 ? '+' : '') + fmt0(chg) + '%') + '</b><i>' + $$(ptotal) + ' before</i></div>' +
+      '<div><span>' + (proj ? 'On track for' : 'Per month') + '</span><b>' + (proj ? proj.split(' ')[0] : $$(total / (INS.period === '3m' ? 3 : INS.period === '6m' ? 6 : 1))) + '</b><i>' + (proj ? 'at this pace' : 'average') + '</i></div></div>';
+    // by category
+    var group = function (key) { var g = {}; cur.forEach(function (t) { var v = toSGD(t); if (isFinite(v)) g[key(t)] = (g[key(t)] || 0) + v; }); return Object.keys(g).map(function (k) { return [k, g[k]]; }).sort(function (a, b) { return b[1] - a[1]; }); };
+    var bars = function (list, max) {
+      var top = list.length ? Math.max(list[0][1], 1) : 1;
+      return list.slice(0, max).map(function (x) { return '<div class="bar"><span class="k">' + esc(x[0]) + '</span><span class="tr3"><div style="width:' + Math.max(2, x[1] / top * 100) + '%"></div></span><span class="v">' + $$(x[1]) + '</span></div>'; }).join('');
+    };
+    h += '<section class="bsec"><h2 class="mbar"><span>BY CATEGORY</span></h2>' + bars(group(function (t) { return t.cat; }), 12) + '</section>';
+    h += '<section class="bsec"><h2 class="mbar"><span>TOP MERCHANTS</span></h2>' + bars(group(function (t) { return t.merchant; }), 8) + '</section>';
+    h += '<section class="bsec"><h2 class="mbar"><span>BY CARD</span></h2>' + bars(group(function (t) { return (t.bank || 'Card') + (t.card ? ' ··' + t.card : ''); }), 8) + '</section>';
+    // subscriptions: same merchant in 2+ different months at a similar amount
+    var byM = {};
+    txns.forEach(function (t) { if (t.amt > 0 && t.merchant !== '(unknown)') (byM[t.merchant.toLowerCase()] = byM[t.merchant.toLowerCase()] || []).push(t); });
+    var subs = Object.keys(byM).map(function (k) {
+      var l = byM[k], months = {}; l.forEach(function (t) { months[GC.iso(new Date(t.date)).slice(0, 7)] = 1; });
+      var amts = l.map(toSGD).filter(isFinite).sort(function (a, b) { return a - b; }), med = amts[Math.floor(amts.length / 2)];
+      var similar = amts.filter(function (a) { return Math.abs(a - med) <= Math.max(1, med * 0.15); }).length;
+      return { name: l[0].merchant, months: Object.keys(months).length, med: med, ok: Object.keys(months).length >= 2 && similar >= 2 && similar / amts.length >= 0.6 };
+    }).filter(function (x) { return x.ok; }).sort(function (a, b) { return b.med - a.med; });
+    h += '<section class="bsec"><h2 class="mbar"><span>LIKELY SUBSCRIPTIONS</span><span class="n">' + subs.length + '</span></h2>' +
+      (subs.length ? subs.slice(0, 12).map(function (x) { return '<div class="bq"><b>' + esc(x.name) + '</b><span class="v">' + $$(x.med) + ' · ' + x.months + ' months</span></div>'; }).join('') +
+        '<p class="small">About ' + $$(subs.reduce(function (s2, x) { return s2 + x.med; }, 0)) + ' a month in total.</p>' : '<p class="bnone">None spotted yet (needs at least two months of alerts).</p>') + '</section>';
+    // largest
+    var big = cur.slice().sort(function (a, b) { return (toSGD(b) || 0) - (toSGD(a) || 0); }).slice(0, 5);
+    h += '<section class="bsec"><h2 class="mbar"><span>LARGEST</span></h2>' + big.map(function (t) {
+      return '<div class="bq"><b>' + esc(mailWhen(t.date)) + ' · ' + esc(t.merchant) + '</b><span class="v">' + (t.ccy !== 'SGD' ? esc(t.ccy) + ' ' + fmt2(t.amt) + ' ≈ ' : '') + $$(toSGD(t)) + '</span></div>';
+    }).join('') + '</section>';
+    // foreign currency
+    var fx = cur.filter(function (t) { return t.ccy !== 'SGD'; }), fxT = sum(fx);
+    if (fx.length) h += '<p class="small" style="margin-top:0.6rem">Foreign currency: ' + $$(fxT) + ' (' + fmt0(fxT / total * 100) + '% of spending) across ' + fx.length + ' transactions, converted at today\'s mid rates.</p>';
+    // all transactions + unread alerts
+    h += '<details class="sched"><summary>Transactions (' + cur.length + ')</summary>' + cur.slice().sort(function (a, b) { return b.date - a.date; }).map(function (t) {
+      return '<div class="bq"><b>' + esc(mailWhen(t.date)) + ' · ' + esc(t.merchant) + '</b><span class="v">' + (t.ccy !== 'SGD' ? esc(t.ccy) + ' ' : '$') + fmt2(t.amt) + '</span></div>';
+    }).join('') + '</details>';
+    var fl = (txMeta.failed || []).slice(-30).reverse();
+    if (fl.length) h += '<details class="sched"><summary>Emails it couldn\'t read (' + (txMeta.failed || []).length + ')</summary><p class="small">If any of these are card purchases, send me one (with numbers blanked out) and I\'ll teach it that format.</p>' +
+      fl.map(function (f) { return '<div class="bq"><b>' + esc(f.f) + '</b><span class="v small">' + esc(f.s) + '</span></div>'; }).join('') + '</details>';
+    h += '<p class="small">Built from card transaction alert emails. Purchases your bank doesn\'t email about aren\'t counted. Non-SGD amounts use today\'s mid rates.</p>';
+    $('ins').innerHTML = h;
+  }
+  function fmt0(v) { return isFinite(v) ? Math.round(v).toLocaleString('en-US') : '—'; }
+  function fmt2(v) { return isFinite(v) ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; }
+
   function setTab(t) {
     if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
     if (tab === 'fan' && t !== 'fan' && FAN) { fanSeen = FAN.items.length ? FAN.items[0].t : fanSeen; prefs('fanSeen', fanSeen); }
     tab = t;
-    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief', nt = t === 'notes';
+    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief', nt = t === 'notes', ml = t === 'mail', ins = t === 'ins';
+    $('tab-mail').setAttribute('aria-pressed', ml); $('mail').hidden = !ml; $('mchips').hidden = !ml;
+    $('tab-ins').setAttribute('aria-pressed', ins); $('ins').hidden = !ins; $('ichips').hidden = !ins;
     $('tab-notes').setAttribute('aria-pressed', nt); $('notes').hidden = !nt;
     $('tab-brief').setAttribute('aria-pressed', br); $('brief').hidden = !br;
     $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
-    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt; $('cmdrow').hidden = tl || br;
+    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt || ml || ins; $('cmdrow').hidden = tl || br || ins;
     $('ask').hidden = true;   // assistant switched off for now $('jump').hidden = true;   // TODAY button removed $('add').hidden = !(cal || br || nt);
     $('q').value = '';
     if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
@@ -583,11 +801,20 @@
     else if (tl) { $('tchips').innerHTML = Tools.chips(); Tools.draw(); SC().scrollTop = 0; }
     else if (br) { renderBrief(); loadNews(); SC().scrollTop = 0; }
     else if (nt) { renderNotes(); SC().scrollTop = 0; }
+    else if (ml) { renderMailChips(); renderMail(); if (!MAIL.list) loadMail(); SC().scrollTop = 0; }
+    else if (ins) { renderInsChips(); renderInsights(); SC().scrollTop = 0; }
     else { showPast = false; render(); jumpToday(false); }
     syncHead();
   }
   $('tab-brief').addEventListener('click', function () { setTab('brief'); });
   $('tab-notes').addEventListener('click', function () { setTab('notes'); });
+  $('tab-mail').addEventListener('click', function () { setTab('mail'); });
+  $('tab-ins').addEventListener('click', function () { setTab('ins'); });
+  $('mail').addEventListener('click', function (e) { var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
+  $('ins').addEventListener('click', function (e) { var g = e.target.closest('[data-act]'); if (!g) return; if (g.getAttribute('data-act') === 'gmail-go') Gmail.start(); if (g.getAttribute('data-act') === 'ins-scan') scanTxns(); });
+  $('mchips').addEventListener('click', function (e) { var b = e.target.closest('[data-m]'); if (!b) return; MAIL.filter = b.getAttribute('data-m'); renderMailChips(); loadMail(); SC().scrollTop = 0; });
+  $('ichips').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (!b) return; INS.period = b.getAttribute('data-i'); renderInsChips(); renderInsights(); SC().scrollTop = 0; });
+  $('q').addEventListener('keydown', function (e) { if (tab === 'mail' && e.key === 'Enter') { MAIL.q = $('q').value.trim(); loadMail(); $('q').blur(); } });
   // short swipe shows DELETE; a long swipe (past 60% of the width) deletes straight away. Undo for 6 seconds.
   var nsw = null, nOpen = null, nJust = false, noteUndo = null;
   function nSet(el, x, anim) { el.style.transition = anim ? 'transform 180ms ease' : 'none'; el.style.transform = x ? 'translateX(' + x + 'px)' : ''; }
@@ -1018,7 +1245,7 @@
     if (pull.y0 === null) return;
     var dy = e.touches[0].clientY - pull.y0;
     if (dy <= 0 || SC().scrollTop > 0) { if (pull.on) setPull(0); pull.on = false; return; }
-    if ((tab === 'cal' && showPast) || tab === 'tools' || tab === 'notes') return;
+    if ((tab === 'cal' && showPast) || tab === 'tools' || tab === 'notes') return;   // mail and insights refresh on pull
     pull.on = true; e.preventDefault();
     pull.d = Math.min(130, dy * 0.45); setPull(pull.d);
   }, { passive: false });
@@ -1034,7 +1261,7 @@
       return;
     }
     pull.busy = true; setPull(48, true);
-    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : Promise.all([loadNews(), loadMarkets(), loadFinance()])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
+    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : tab === 'mail' ? loadMail() : tab === 'ins' ? scanTxns() : Promise.all([loadNews(), loadMarkets(), loadFinance(), loadMail()])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
   });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });   // no pinch zoom
 
@@ -1537,7 +1764,7 @@
     openSheet('<h2>Menu</h2><div class="menu">' +
       (prefs('aiReady') ? '<button class="btn" type="button" data-act="ai-free">Remove AI model (frees about 1 GB)</button>' : '') +
       '<button class="btn" type="button" data-act="rules">Bills &amp; recurring</button>' +
-      '<button class="btn" type="button" data-act="gmail">Gmail (test)</button>' +
+      '<button class="btn" type="button" data-act="gmail">Gmail: ' + (Gmail.token() ? 'connected (sign out)' : 'sign in') + '</button>' +
       '<button class="btn" type="button" data-act="notify">Evening notification</button>' +
       '<button class="btn" type="button" data-act="hol-toggle">' + (holidaysOn() ? 'Hide' : 'Show') + ' Singapore holidays</button>' +
       '<button class="btn" type="button" data-act="import">Import entries</button>' +
@@ -1546,7 +1773,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 55022edbd8d1</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 7c9fbe199ff9</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -1662,7 +1889,7 @@
   // =====================================================================
   // Events
   // =====================================================================
-  $('q').addEventListener('input', function () { if (tab === 'notes') { renderNotes(); return; } if (tab === 'news') { renderNews(); return; } if (tab === 'fan') { renderFantasy(); return; } render(); if (!$('q').value) jumpToday(false); });
+  $('q').addEventListener('input', function () { if (tab === 'mail') { if (!$('q').value && MAIL.q) { MAIL.q = ''; loadMail(); } return; } if (tab === 'notes') { renderNotes(); return; } if (tab === 'news') { renderNews(); return; } if (tab === 'fan') { renderFantasy(); return; } render(); if (!$('q').value) jumpToday(false); });
   $('jump').addEventListener('click', function () { $('q').value = ''; render(); jumpToday(true); });
   var holdTimer = null, held = false, hold0 = null;
   $('chips').addEventListener('pointerdown', function (e) {
@@ -1731,6 +1958,8 @@
     else if (act === 'import') showImport();
     else if (act === 'rules') showRules();
     else if (act === 'gmail') showGmail();
+    else if (act === 'm-note' && openMailMsg) { var nowIso = new Date().toISOString(); notes.push({ id: 'n' + uid(), title: openMailMsg.subject, body: 'From: ' + openMailMsg.from + '\n\n' + (openMailMsg.text || openMailMsg.snippet || '').slice(0, 6000), pinned: false, created: nowIso, updated: nowIso }); persist(); closeSheet(); flashToast('Saved to Notes'); }
+    else if (act === 'm-events' && openMailMsg) { var mt = openMailMsg.subject + '\n' + (openMailMsg.text || '').slice(0, 1500); closeSheet(); showPaste(mt); }
     else if (act === 'gmail-go') Gmail.start();
     else if (act === 'gmail-off') { Gmail.forget(); showGmail(); }
     else if (act === 'sv-save') {
