@@ -31,9 +31,9 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
-  var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [], bookSeen = [];
+  var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [], bookSeen = [], mailSeen = [], seenSet = {};
   function persist() {
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800) };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800), mailSeen: mailSeen.slice(-1500) };
     saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
@@ -153,6 +153,7 @@
     txns = data.txns || []; txMeta = data.txMeta || { last: 0, failed: [] };
     mailPins = data.mailPins || [];
     bookSeen = data.bookSeen || [];
+    mailSeen = data.mailSeen || []; seenSet = {}; mailSeen.forEach(function (id) { seenSet[id] = 1; });
     txns = []; txMeta = { v: 2, last: 0, failed: [] };   // insights removed: don't keep card data
     if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
     Tools.setTape(calcTape);
@@ -378,10 +379,10 @@
     if (Gmail.token()) {
       if (!MAIL.list && !MAIL.loading) loadMail();
       var ml2 = (MAIL.list || []).slice(0, 12);
-      html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span><span class="n">' + (MAIL.list ? MAIL.list.filter(function (m) { return m.unread; }).length + ' unread' : '') + '</span></h2>' +
+      html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span><span class="n">' + (MAIL.list ? MAIL.list.filter(isUnread).length + ' unread' : '') + '</span></h2>' +
         (ml2.length ? '<div class="' + (ml2.length > 3 ? 'bscroll' : '') + '">' + ml2.map(function (m) {
-          return '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-bmid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
-            '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></button>';
+          return '<button type="button" class="mrow' + (isUnread(m) ? '' : ' read') + '" data-bmid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
+            '<span><span class="mf' + (isUnread(m) ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></button>';
         }).join('') + '</div>' + (ml2.length > 3 ? '<div class="bmore">↓ scroll for ' + (ml2.length - 3) + ' more</div>' : '')
           : '<p class="bnone">' + (MAIL.loading ? 'Loading…' : 'No new mail.') + '</p>') + '</section>';
     } else {
@@ -514,6 +515,14 @@
       noteMsg('Tidied. <button class="btn link" type="button" data-act="n-undo">Undo</button>');
     } catch (e) { noteMsg('AI couldn\'t tidy that (' + esc(e.message || e) + '). Your note is unchanged.'); }
   }
+  // swipe left/right inside an open email
+  var msx = null;
+  $('sheet').addEventListener('touchstart', function (e) { msx = $('sheet').querySelector('.mbody') && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null; }, { passive: true });
+  $('sheet').addEventListener('touchend', function (e) {
+    if (!msx) return;
+    var t = e.changedTouches[0], dx = t.clientX - msx.x, dy = t.clientY - msx.y; msx = null;
+    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8) mailStep(dx < 0 ? 1 : -1);
+  }, { passive: true });
   $('sheet').addEventListener('change', function (e) {
     if (e.target.id !== 'impfile' || !e.target.files || !e.target.files[0]) return;
     var r = new FileReader();
@@ -591,6 +600,8 @@
   // Mail (Gmail, read-only). Emails are fetched to the phone and shown; they are not stored.
   // =====================================================================
   var MAIL = { list: null, filter: 'all', q: '', loading: false, err: '', next: '', more: false };
+  function isUnread(m) { return m.unread && !seenSet[m.id]; }
+  function markSeen(id) { if (!seenSet[id]) { seenSet[id] = 1; mailSeen.push(id); persist(); } }
   var MAIL_CHIPS = [['all', 'All mail'], ['inbox', 'Inbox'], ['unread', 'Unread'], ['banks', '🏦 Banks & bills']];
   var BANK_Q = '(from:dbs.com OR from:posb.com.sg OR from:uob.com.sg OR from:citibank.com OR from:citi.com OR from:hsbc.com.sg OR from:trustbank.sg OR from:ocbc.com OR from:sc.com OR from:spgroup.com.sg OR subject:(statement OR bill OR "payment due" OR transaction))';
   function mailQuery() {
@@ -633,8 +644,8 @@
     var pinned = {}; mailPins.forEach(function (p) { pinned[p.id] = 1; });
     var row = function (m) {
       return '<div class="mwrap"><div class="swipe-pin" aria-hidden="true">' + (pinned[m.id] ? 'UNPIN' : '📌 PIN') + '</div>' +
-        '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-mid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
-        '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + (pinned[m.id] ? '📌 ' : '') + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span>' +
+        '<button type="button" class="mrow' + (isUnread(m) ? '' : ' read') + '" data-mid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
+        '<span><span class="mf' + (isUnread(m) ? ' unread' : '') + '">' + (pinned[m.id] ? '📌 ' : '') + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span>' +
         (m.snippet ? '<span class="mp">' + esc(m.snippet) + '</span>' : '') + '</span></button></div>';
     };
     if (mailPins.length) h += '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + mailPins.length + '</span></h2>' +
@@ -701,14 +712,33 @@
       openSheet('<h2>Find bookings</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>');
     });
   }
-  var openMailMsg = null;
+  var openMailMsg = null, mailNavId = null;
+  function mailOrder() {   // same order as on screen: pinned first, then the list
+    var seen = {}, out = [];
+    mailPins.slice().sort(function (a, b) { return b.date - a.date; }).concat(MAIL.list || []).forEach(function (m) { if (!seen[m.id]) { seen[m.id] = 1; out.push(m.id); } });
+    return out;
+  }
+  function mailStep(dir) {   // dir +1 = older (next), -1 = newer (previous)
+    var order = mailOrder(), i = order.indexOf(mailNavId);
+    if (i < 0) return;
+    var j = i + dir;
+    if (j >= 0 && j < order.length) { openMail(order[j]); return; }
+    if (dir > 0 && MAIL.next) { openSheet('<h2>Mail</h2><p>Loading older…</p>'); loadOlder(); var tries = 0, wait = setInterval(function () { tries++; var o2 = mailOrder(); if (o2.length > order.length || tries > 40) { clearInterval(wait); if (o2[j]) openMail(o2[j]); else closeSheet(); } }, 250); }
+  }
   function openMail(id) {
+    mailNavId = id; markSeen(id);
+    if (tab === 'mail') renderMail(); else if (tab === 'brief') renderBrief();
+    var order = mailOrder(), pos = order.indexOf(id);
     openSheet('<h2>Mail</h2><p>Loading…</p>');
     Gmail.full(id).then(function (m) {
+      if (mailNavId !== id) return;   // you've already swiped on
       openMailMsg = m;
       var d = new Date(m.date), l = dLabel(GC.iso(d));
       openSheet('<h2 style="text-transform:none;letter-spacing:0">' + esc(m.subject) + '</h2>' +
         '<p class="small">' + esc(m.from) + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + '</p>' +
+        '<div class="mnav"><button class="btn" type="button" data-act="m-prev"' + (pos <= 0 ? ' disabled' : '') + '>‹ Newer</button>' +
+          '<span class="small">' + (pos >= 0 ? (pos + 1) + ' / ' + order.length + (MAIL.next ? '+' : '') : '') + ' · swipe ‹ ›</span>' +
+          '<button class="btn" type="button" data-act="m-next"' + (pos < 0 || (pos >= order.length - 1 && !MAIL.next) ? ' disabled' : '') + '>Older ›</button></div>' +
         '<div class="mbody">' + esc((m.text || m.snippet || '').slice(0, 12000)) + '</div>' +
         '<div class="actions"><a class="btn grow" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId) + '" target="_blank" rel="noopener noreferrer">Open in Gmail</a>' +
         '<button class="btn" type="button" data-act="m-note">Save to Notes</button><button class="btn" type="button" data-act="m-events">Make events</button>' +
@@ -1919,7 +1949,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version a556e34b169f</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version ffcdd3b63c3d</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2104,6 +2134,8 @@
     else if (act === 'import') showImport();
     else if (act === 'rules') showRules();
     else if (act === 'gmail') showGmail();
+    else if (act === 'm-prev') mailStep(-1);
+    else if (act === 'm-next') mailStep(1);
     else if (act === 'm-note' && openMailMsg) { var nowIso = new Date().toISOString(); notes.push({ id: 'n' + uid(), title: openMailMsg.subject, body: 'From: ' + openMailMsg.from + '\n\n' + (openMailMsg.text || openMailMsg.snippet || '').slice(0, 6000), pinned: false, created: nowIso, updated: nowIso }); persist(); closeSheet(); flashToast('Saved to Notes'); }
     else if (act === 'm-events' && openMailMsg) { var mt = openMailMsg.subject + '\n' + (openMailMsg.text || '').slice(0, 1500); closeSheet(); showPaste(mt); }
     else if (act === 'gmail-go') Gmail.start();
