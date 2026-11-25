@@ -581,8 +581,9 @@
         : briefRows(econ, true)) : '<p class="bnone">No tier-1 releases in the next 24 hours.</p>') + '</section>';
 
     // markets
-    var tk = MKT && MKT.items ? MKT.items.filter(function (q) { return q.tk !== false; }) : [];
-    html += '<section class="bsec"><h2 class="mbar"><span>MARKETS · VS PREVIOUS CLOSE</span></h2>' + (tk.length ? '<div class="bgrid">' + tk.map(function (q) {
+    var BRIEF_MKT = ['SPX', 'NDX', 'DOW', 'UST 2Y', 'UST 10Y', 'UST 30Y', 'DXY', 'USDSGD', 'USDJPY', 'AUDUSD', 'EURUSD', 'GBPUSD', 'XAUUSD', 'XAGUSD'];
+    var tk = BRIEF_MKT.map(quote).filter(Boolean);
+    html += '<section class="bsec"><h2 class="mbar"><span>MARKETS · VS PREVIOUS CLOSE</span></h2>' + (tk.length ? '<div class="bgrid bmkt">' + tk.map(function (q) {
       var f = fmtQ(q);
       return '<div class="bq"><b>' + esc(q.k) + '</b><span class="v">' + f.v + ' <span style="color:var(--' + (f.cls === 'up' ? 'up' : f.cls === 'dn' ? 'red' : 'muted') + ')">' + f.ch + '</span></span></div>';
     }).join('') + '</div>' : '<p class="bnone">Loading prices…</p>') + '</section>';
@@ -2220,7 +2221,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 22b3c225945a</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version c350ec2d0183</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {

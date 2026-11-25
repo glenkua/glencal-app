@@ -31,7 +31,7 @@ U = [
     ("HSI", "^HSI", "index", "Indices", "Hang Seng"), ("SHCOMP", "000001.SS", "index", "Indices", "Shanghai Composite"),
     ("KOSPI", "^KS11", "index", "Indices", "KOSPI"), ("ASX200", "^AXJO", "index", "Indices", "S&P/ASX 200"),
     ("FTSE", "^FTSE", "index", "Indices", "FTSE 100"), ("DAX", "^GDAXI", "index", "Indices", "DAX"), ("SX5E", "^STOXX50E", "index", "Indices", "Euro Stoxx 50"),
-    ("GOLD", "GC=F", "cmd", "Commodities", "Gold futures"), ("SILVER", "SI=F", "cmd", "Commodities", "Silver futures"),
+    ("XAUUSD", "GC=F", "cmd", "Commodities", "Gold (front-month futures)"), ("XAGUSD", "SI=F", "cmd", "Commodities", "Silver (front-month futures)"),
     ("WTI", "CL=F", "cmd", "Commodities", "WTI crude futures"), ("BRENT", "BZ=F", "cmd", "Commodities", "Brent crude futures"),
     ("COPPER", "HG=F", "cmd", "Commodities", "Copper futures"), ("NATGAS", "NG=F", "cmd", "Commodities", "Natural gas futures"),
     ("BTC", "BTC-USD", "crypto", "Crypto", "Bitcoin (USD)"), ("ETH", "ETH-USD", "crypto", "Crypto", "Ether (USD)"),
