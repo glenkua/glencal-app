@@ -1,8 +1,8 @@
 // Offline support: the app's own files are cached on the phone. AI model files are cached separately by web-llm.
 // A new version installs in the background and waits; it takes over after "Install update" or the next full restart.
-const VERSION = 'ef886c0b40b4';
+const VERSION = '560dd9996b7a';
 const CACHE = 'glencal-' + VERSION;
-const FILES = ['./', 'index.html', 'app.js', 'parser.js', 'vault.js', 'holidays.js', 'finance.js', 'push-key.js', 'gmail.js', 'tools.js', 'ai.js', 'manifest.webmanifest',
+const FILES = ['./', 'index.html', 'app.js', 'parser.js', 'vault.js', 'holidays.js', 'finance.js', 'push-key.js', 'daily.js', 'gmail.js', 'tools.js', 'ai.js', 'manifest.webmanifest',
   'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/web-llm-0.2.87.js'];
 
 self.addEventListener('install', (e) => {

@@ -128,6 +128,10 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .nrow.new .nt::after { content: " ●"; color: var(--amber); font-size: 0.6rem; vertical-align: 0.15rem; }
 .nrow:visited .nh { color: var(--muted); }
 /* morning brief */
+.bdaily { margin: 0.15rem 0 0.2rem; color: var(--muted); font-family: var(--sans); font-size: 0.82rem; line-height: 1.45; }
+.bdaily .dk { color: var(--amber); font-family: var(--mono); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; margin-right: 0.35rem; }
+.bdaily .ds { white-space: nowrap; }
+.bdaily.q { font-style: italic; }
 .bhead { padding: 0.8rem 0 0.2rem; font-size: 1.05rem; font-weight: 800; letter-spacing: 0.1em; color: var(--fg); }
 .bsec { margin-top: 0.9rem; }
 .bnone { color: var(--muted); padding: 0.35rem 0; margin: 0; }
@@ -366,7 +370,7 @@ textarea { min-height: 9rem; resize: vertical; }
     <div id="clocks" class="clocks" aria-label="World clocks"></div>
     <button id="tick" class="tick" type="button" aria-label="Market prices" hidden><span id="tktrack" class="tk-track"></span></button>
     <div class="r1">
-      <span class="brand">GLENCAL</span>
+      <span class="brand" id="brandtxt">GLENCAL</span>
       <span class="clock" id="clock"></span>
       <button id="ask" class="key" type="button" hidden>ASK</button>
       <button id="jump" class="key" type="button" hidden>TODAY</button>
@@ -403,6 +407,7 @@ textarea { min-height: 9rem; resize: vertical; }
 <script src="finance.js"></script>
 <script src="push-key.js"></script>
 <script src="vault.js"></script>
+<script src="daily.js"></script>
 <script src="gmail.js"></script>
 <script src="tools.js"></script>
 <script src="app.js"></script>

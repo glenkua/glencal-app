@@ -176,7 +176,7 @@
     closeSheet();
     $('list').innerHTML = '';
     askHistory = []; pending = null;
-    calcTape = []; Tools.setTape([]); notes = []; txns = []; mailPins = []; MAIL.list = null; mailCache = {}; mailCacheOrder = [];
+    calcTape = []; Tools.setTape([]); notes = []; txns = []; mailPins = []; MAIL.list = null; mailCache = {}; mailCacheOrder = []; BMAIL.list = null;
     showUnlock();
   }
 
@@ -367,6 +367,13 @@
     var byTime = function (a, b) { return (a.time || '') < (b.time || '') ? -1 : 1; };
     var mineOf = function (d) { return allEntries().filter(function (e) { return e.date === d && !(e.bill && !e.isDue); }).sort(byTime); };
     var html = '<div class="bhead">' + (h < 12 ? 'GOOD MORNING' : h < 18 ? 'GOOD AFTERNOON' : 'GOOD EVENING') + ' · ' + l.dow + ' ' + l.day + ' ' + l.mon + '</div>';
+    if (typeof DAILY !== 'undefined' && DAILY.length) {   // one item a day, the same all day
+      var dayNo = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(2026, 0, 1)) / 864e5);
+      var it = DAILY[((dayNo * 37) % DAILY.length + DAILY.length) % DAILY.length];   // stepping by 37 mixes the topics
+      var KIND = { m: 'MARKETS', h: 'HABIT', t: 'DID YOU KNOW', q: 'QUOTE' };
+      html += '<div class="bdaily' + (it[0] === 'q' ? ' q' : '') + '"><span class="dk">' + KIND[it[0]] + '</span>' +
+        (it[0] === 'q' ? '“' + esc(it[1]) + '” <span class="ds">— ' + esc(it[2]) + '</span>' : esc(it[1])) + '</div>';
+    }
 
     // today / tomorrow
     var today = mineOf(todayISO), tom = mineOf(tmr);
@@ -377,14 +384,14 @@
 
     // mail: latest Primary emails (only while signed in)
     if (Gmail.token()) {
-      if (!MAIL.list && !MAIL.loading) loadMail();
-      var ml2 = (MAIL.list || []).slice(0, 12);
-      html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span><span class="n">' + (MAIL.list ? MAIL.list.filter(isUnread).length + ' unread' : '') + '</span></h2>' +
+      if ((!BMAIL.list || Date.now() - BMAIL.at > 5 * 60000) && !BMAIL.loading) loadBriefMail();
+      var ml2 = BMAIL.list || [];
+      html += '<section class="bsec"><h2 class="mbar"><span>MAIL · PAST 7 DAYS</span><span class="n">' + (BMAIL.list ? BMAIL.list.filter(isUnread).length + ' unread' : '') + '</span></h2>' +
         (ml2.length ? '<div class="' + (ml2.length > 3 ? 'bscroll' : '') + '">' + ml2.map(function (m) {
           return '<button type="button" class="mrow' + (isUnread(m) ? '' : ' read') + '" data-bmid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
             '<span><span class="mf' + (isUnread(m) ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></button>';
         }).join('') + '</div>' + (ml2.length > 3 ? '<div class="bmore">↓ scroll for ' + (ml2.length - 3) + ' more</div>' : '')
-          : '<p class="bnone">' + (MAIL.loading ? 'Loading…' : 'No new mail.') + '</p>') + '</section>';
+          : '<p class="bnone">' + (BMAIL.loading || !BMAIL.list ? 'Loading…' : 'No mail in the past 7 days.') + '</p>') + '</section>';
     } else {
       html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span></h2><p class="bnone"><button class="btn" type="button" data-bgo="1">Sign in to Gmail</button></p></section>';
     }
@@ -466,7 +473,7 @@
         '<span class="np">' + esc((body || '').trim().slice(0, 240)) + '</span></button></div>';
     };
     var pinned = list.filter(function (n) { return n.pinned; }), rest = list.filter(function (n) { return !n.pinned; });
-    $('notes').innerHTML = (pinned.length ? '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + pinned.length + '</span></h2>' + pinned.map(row).join('') : '') +
+    $('notes').innerHTML = '<div class="actions" style="margin-top:0.5rem"><button class="btn primary" type="button" data-newnote="1">+ New note</button></div>' + (pinned.length ? '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + pinned.length + '</span></h2>' + pinned.map(row).join('') : '') +
       '<h2 class="mbar"><span>NOTES</span><span class="n">' + rest.length + '</span></h2>' +
       (rest.length ? rest.map(row).join('') : '<p class="empty">' + (q ? 'NO MATCHES' : pinned.length ? 'No other notes.' : 'No notes yet. Tap + ADD to write one.') + '</p>');
   }
@@ -601,6 +608,14 @@
   // =====================================================================
   var MAIL = { list: null, filter: 'all', q: '', loading: false, err: '', next: '', more: false };
   function isUnread(m) { return m.unread && !seenSet[m.id]; }
+  // the Brief keeps its own list: inbox, past 7 days
+  var BMAIL = { list: null, loading: false, at: 0 };
+  function loadBriefMail() {
+    if (!Gmail.token() || BMAIL.loading) return Promise.resolve();
+    BMAIL.loading = true;
+    return Gmail.page('in:inbox newer_than:7d', 30, '').then(function (r) { BMAIL.list = r.list; BMAIL.at = Date.now(); }, function () {})
+      .then(function () { BMAIL.loading = false; if (tab === 'brief') renderBrief(); });
+  }
   function markSeen(id) { if (!seenSet[id]) { seenSet[id] = 1; mailSeen.push(id); persist(); } }
   var MAIL_CHIPS = [['all', 'All mail'], ['inbox', 'Inbox'], ['unread', 'Unread'], ['banks', '🏦 Banks & bills']];
   var BANK_Q = '(from:dbs.com OR from:posb.com.sg OR from:uob.com.sg OR from:citibank.com OR from:citi.com OR from:hsbc.com.sg OR from:trustbank.sg OR from:ocbc.com OR from:sc.com OR from:spgroup.com.sg OR subject:(statement OR bill OR "payment due" OR transaction))';
@@ -743,7 +758,7 @@
   var openMailMsg = null, mailNavId = null;
   function mailOrder() {   // same order as on screen: pinned first, then the list
     var seen = {}, out = [];
-    mailPins.slice().sort(function (a, b) { return b.date - a.date; }).concat(MAIL.list || []).forEach(function (m) { if (!seen[m.id]) { seen[m.id] = 1; out.push(m.id); } });
+    (tab === 'brief' ? (BMAIL.list || []) : mailPins.slice().sort(function (a, b) { return b.date - a.date; }).concat(MAIL.list || [])).forEach(function (m) { if (!seen[m.id]) { seen[m.id] = 1; out.push(m.id); } });
     return out;
   }
   function mailStep(dir) {   // dir +1 = older (next), -1 = newer (previous)
@@ -797,7 +812,7 @@
     mailNavId = id; markSeen(id);
     if (tab === 'mail') renderMail(); else if (tab === 'brief') renderBrief();
     var order = mailOrder(), pos = order.indexOf(id);
-    var meta = (MAIL.list || []).concat(mailPins).filter(function (x) { return x.id === id; })[0];
+    var meta = (MAIL.list || []).concat(mailPins, BMAIL.list || []).filter(function (x) { return x.id === id; })[0];
     if (mailCache[id]) { openMailMsg = mailCache[id]; mailSheet(mailCache[id], true, order, pos); }
     else if (meta) { openMailMsg = meta; mailSheet(meta, false, order, pos); }   // header and preview straight away
     else openSheet('<h2>Mail</h2><p>Loading…</p>');
@@ -988,7 +1003,8 @@
     $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
     $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt || ml || ins; $('cmdrow').hidden = tl || br || ins;
-    $('ask').hidden = true;   // assistant switched off for now $('jump').hidden = true;   // TODAY button removed $('add').hidden = !(cal || br || nt);
+    $('ask').hidden = true;   // assistant switched off for now
+    $('brandtxt').hidden = !br; $('jump').hidden = true;   // TODAY button removed $('add').hidden = !cal;
     $('q').value = ''; $('qclear').hidden = true;
     if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
     else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); SC().scrollTop = 0; }
@@ -1111,6 +1127,7 @@
   $('notes').addEventListener('pointerup', nEnd);
   $('notes').addEventListener('pointercancel', nEnd);
   $('notes').addEventListener('click', function (e) {
+    if (e.target.closest('[data-newnote]')) { openNote(null); return; }
     var d = e.target.closest('[data-ndel]'); if (d) { nOpen = null; deleteNote(d.getAttribute('data-ndel')); return; }
     var b = e.target.closest('[data-note]'); if (!b || nJust) return;
     if (nOpen) { nClose(); return; }
@@ -1510,7 +1527,7 @@
       return;
     }
     pull.busy = true; setPull(48, true);
-    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : tab === 'mail' ? loadMail() : tab === 'ins' ? scanTxns() : Promise.all([loadNews(), loadMarkets(), loadFinance(), loadMail()])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
+    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : tab === 'mail' ? loadMail() : tab === 'ins' ? scanTxns() : Promise.all([loadNews(), loadMarkets(), loadFinance(), (BMAIL.at = 0, loadBriefMail())])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
   });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });   // no pinch zoom
 
@@ -2022,7 +2039,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version ef886c0b40b4</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 560dd9996b7a</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
