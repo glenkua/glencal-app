@@ -175,6 +175,11 @@ main { overflow-x: hidden; max-width: 100vw; }
 .mrow .mp { color: var(--muted); font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mrow.read .mf, .mrow.read .ms { font-weight: 400; color: var(--muted); }
 .mrow .mf.unread::before { content: "● "; color: var(--amber); font-size: 0.7rem; }
+/* open email: fixed height, body scrolls inside */
+.sheet.mailsheet { height: 70vh; max-height: 70vh; }
+.sheet.mailsheet .mbody { flex: 1 1 auto; min-height: 0; max-height: none; }
+.mtitle { font-family: var(--sans); font-size: 1.3rem; font-weight: 800; line-height: 1.3; color: var(--fg); overflow-wrap: anywhere; }
+.mfrom { margin: 0; color: var(--muted); font-size: 0.95rem; }
 .msum { border-left: 2px solid var(--amber); background: var(--raise); padding: 0.5rem 0.6rem; display: flex; flex-direction: column; gap: 0.25rem; }
 .msum .small { letter-spacing: 0.1em; font-weight: 700; }
 .mlink { color: var(--cyan); text-decoration: none; border: 1px solid var(--line); border-radius: 3px; padding: 0 0.3rem; font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
