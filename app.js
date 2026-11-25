@@ -381,7 +381,7 @@
       html += '<section class="bsec"><h2 class="mbar"><span>MAIL</span><span class="n">' + (MAIL.list ? MAIL.list.filter(function (m) { return m.unread; }).length + ' unread' : '') + '</span></h2>' +
         (ml2.length ? '<div class="' + (ml2.length > 3 ? 'bscroll' : '') + '">' + ml2.map(function (m) {
           return '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-bmid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
-            '<span><span class="mline"><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></span></button>';
+            '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span></button>';
         }).join('') + '</div>' + (ml2.length > 3 ? '<div class="bmore">↓ scroll for ' + (ml2.length - 3) + ' more</div>' : '')
           : '<p class="bnone">' + (MAIL.loading ? 'Loading…' : 'No new mail.') + '</p>') + '</section>';
     } else {
@@ -634,7 +634,7 @@
     var row = function (m) {
       return '<div class="mwrap"><div class="swipe-pin" aria-hidden="true">' + (pinned[m.id] ? 'UNPIN' : '📌 PIN') + '</div>' +
         '<button type="button" class="mrow' + (m.unread ? '' : ' read') + '" data-mid="' + esc(m.id) + '"><span class="mt2">' + esc(mailWhen(m.date)) + '</span>' +
-        '<span><span class="mline"><span class="mf' + (m.unread ? ' unread' : '') + '">' + (pinned[m.id] ? '📌 ' : '') + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span></span>' +
+        '<span><span class="mf' + (m.unread ? ' unread' : '') + '">' + (pinned[m.id] ? '📌 ' : '') + esc(m.from) + '</span><span class="ms">' + esc(m.subject) + '</span>' +
         (m.snippet ? '<span class="mp">' + esc(m.snippet) + '</span>' : '') + '</span></button></div>';
     };
     if (mailPins.length) h += '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + mailPins.length + '</span></h2>' +
@@ -1919,7 +1919,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 3537126f2ef5</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version a556e34b169f</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
