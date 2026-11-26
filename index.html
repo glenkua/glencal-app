@@ -275,6 +275,13 @@ main { overflow-x: hidden; max-width: 100vw; }
 .wc .wh .p { color: #fff; }
 .wc .wh .c { margin-left: auto; }
 .wc svg { display: block; width: 100%; height: 140px; }
+.wc [data-wsvg] { cursor: zoom-in; }
+.wbig { background: #000; margin: 0 -0.8rem; padding: 0.4rem 0.8rem 0.5rem; }
+.wbig .wh { display: flex; align-items: baseline; gap: 0.5rem; font-family: var(--mono); font-size: 0.95rem; }
+.wbig .wh b { color: var(--amber); } .wbig .wh .p { color: #fff; } .wbig .wh .r { margin-left: auto; color: var(--muted); font-size: 0.75rem; }
+.wbig .wma { font-size: 0.7rem; margin: 0.15rem 0 0.3rem; }
+.bigc { touch-action: none; } .bigc svg { display: block; width: 100%; }
+.bigx { min-height: 1.3rem; font-family: var(--mono); font-size: 0.8rem; color: #ddd; margin-top: 0.3rem; }
 .wma { display: flex; gap: 0.45rem; font-family: var(--mono); font-size: 0.6rem; white-space: nowrap; overflow: hidden; }
 .wc.empty { display: flex; align-items: center; justify-content: center; min-height: 160px; color: #555; font-size: 0.72rem; text-align: center; }
 .wl { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: var(--mono); font-size: 0.9rem; background: #000; }
@@ -425,7 +432,6 @@ textarea { min-height: 9rem; resize: vertical; }
     <div class="r1" id="r1">
       <span class="brand" id="brandtxt">GLENCAL</span>
       <span class="clock" id="clock"></span>
-      <button id="ask" class="key" type="button" hidden>ASK</button>
       <button id="jump" class="key" type="button" hidden>TODAY</button>
       <button id="add" class="key go" type="button">+ ADD</button>
       <a id="openx" class="key" href="https://x.com/notifications" target="_blank" rel="noopener noreferrer" hidden>X ↗</a>
@@ -438,7 +444,6 @@ textarea { min-height: 9rem; resize: vertical; }
     <div id="fchips" class="chips" aria-label="Fantasy filters" hidden></div>
     <div id="tchips" class="chips" aria-label="Tools" hidden></div>
     <div id="mchips" class="chips" aria-label="Mail filters" hidden></div>
-    <div id="ichips" class="chips" aria-label="Insight period" hidden></div>
     <div id="wchips" class="chips" aria-label="Chart range" hidden></div>
     <div id="ntchips" class="chips" aria-label="Note categories" hidden></div>
     <div id="notice" class="notice" hidden></div>
@@ -448,13 +453,12 @@ textarea { min-height: 9rem; resize: vertical; }
   <main id="list" hidden></main>
   <main id="notes" hidden></main>
   <main id="mail" hidden></main>
-  <main id="ins" hidden></main>
   <main id="news" hidden></main>
   <main id="fan" hidden></main>
   <main id="tools" hidden></main>
   <main id="watch" hidden></main>
   </div></div>
-  <nav class="tabs" aria-label="Sections"><button id="tab-brief" type="button" data-tab="brief" aria-pressed="true">BRIEF</button><button id="tab-cal" type="button" data-tab="cal" aria-pressed="false">CALENDAR</button><button id="tab-mail" type="button" data-tab="mail" aria-pressed="false">MAIL</button><button id="tab-ins" type="button" data-tab="ins" aria-pressed="false" hidden>INSIGHTS</button><button id="tab-notes" type="button" data-tab="notes" aria-pressed="false">NOTES</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button><button id="tab-tools" type="button" data-tab="tools" aria-pressed="false">TOOLS</button><button id="tab-watch" type="button" data-tab="watch" aria-pressed="false">WATCHLIST</button></nav>
+  <nav class="tabs" aria-label="Sections"><button id="tab-brief" type="button" data-tab="brief" aria-pressed="true">BRIEF</button><button id="tab-cal" type="button" data-tab="cal" aria-pressed="false">CALENDAR</button><button id="tab-mail" type="button" data-tab="mail" aria-pressed="false">MAIL</button><button id="tab-notes" type="button" data-tab="notes" aria-pressed="false">NOTES</button><button id="tab-news" type="button" data-tab="news" aria-pressed="false">NEWS</button><button id="tab-fan" type="button" data-tab="fan" aria-pressed="false">FANTASY</button><button id="tab-tools" type="button" data-tab="tools" aria-pressed="false">TOOLS</button><button id="tab-watch" type="button" data-tab="watch" aria-pressed="false">WATCHLIST</button></nav>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button id="undo" class="key go" type="button">UNDO</button></div>
   <div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true"></div></div>
 </div>

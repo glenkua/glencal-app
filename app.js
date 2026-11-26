@@ -32,12 +32,12 @@
   // ---------- saving ----------
   var saving = Promise.resolve();
   var NOTE_CATS = ['Impt', 'Work', 'Finance', 'Housing', 'Fitness', 'Car', 'Travel', 'Personal'], noteCats = NOTE_CATS.slice(), noteFilter = 'all';
-  var rules = [], paid = {}, calcTape = [], notes = [], txns = [], txMeta = { last: 0, failed: [] }, mailPins = [], bookSeen = [], mailSeen = [], seenSet = {};
+  var rules = [], paid = {}, calcTape = [], notes = [], mailPins = [], mailSeen = [], seenSet = {};
   var loaded = false, lastCounts = null, restoreList = [];
   function counts(d) { return { items: (d.items || []).length, notes: (d.notes || []).filter(function (n) { return n && (n.title || n.body); }).length, pins: (d.mailPins || []).length }; }
   function persist() {
     if (!loaded) return;   // nothing is saved until your data has finished loading
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), txns: txns.slice(-3000), txMeta: txMeta, mailPins: mailPins, bookSeen: bookSeen.slice(-800), mailSeen: mailSeen.slice(-1500), watch: WL, noteCats: noteCats };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), mailPins: mailPins, mailSeen: mailSeen.slice(-1500), watch: WL, noteCats: noteCats };
     var c = counts(snap), p = lastCounts;
     // Safety net: a save that would empty a section that had 3 or more entries in one go is held back.
     if (p && ['items', 'notes', 'pins'].some(function (k) { return p[k] >= 3 && c[k] === 0; }) && !persist.allowWipe) {
@@ -161,14 +161,10 @@
     paid = data.paid || {};
     calcTape = data.calc || [];
     notes = data.notes || [];
-    txns = data.txns || []; txMeta = data.txMeta || { last: 0, failed: [] };
     mailPins = data.mailPins || [];
-    bookSeen = data.bookSeen || [];
     mailSeen = data.mailSeen || []; seenSet = {}; mailSeen.forEach(function (id) { seenSet[id] = 1; });
     noteCats = Array.isArray(data.noteCats) ? data.noteCats : NOTE_CATS.slice();
     WL = data.watch && data.watch.list ? data.watch : JSON.parse(JSON.stringify(WL_DEFAULT)); normWL();
-    txns = []; txMeta = { v: 2, last: 0, failed: [] };   // insights removed: don't keep card data
-    if (txMeta.v !== 2) { txns = []; txMeta = { v: 2, last: 0, failed: [] }; }   // reader v2: rescan from scratch
     Tools.setTape(calcTape);
     lastCounts = counts(data); loaded = true;
     unlocked = true;
@@ -189,8 +185,7 @@
     items = [];
     closeSheet();
     $('list').innerHTML = '';
-    askHistory = []; pending = null;
-    calcTape = []; Tools.setTape([]); notes = []; txns = []; mailPins = []; MAIL.list = null; mailCache = {}; mailCacheOrder = []; BMAIL.list = null;
+    calcTape = []; Tools.setTape([]); notes = []; mailPins = []; MAIL.list = null; mailCache = {}; mailCacheOrder = []; BMAIL.list = null;
     showUnlock();
   }
 
@@ -331,9 +326,10 @@
   function loadHist(file) {
     var h = HIST[file] || (HIST[file] = {});
     var url = mktURL();
-    if (!url || h.loading || (h.data && Date.now() - h.at < 5 * 60000)) return Promise.resolve();
+    var maxAge = file === 'hist-1d' ? 5 * 60000 : file === 'hist-2y' ? 30 * 60000 : 60 * 60000;   // daily and weekly history change only every few hours
+    if (!url || h.loading || (h.data && Date.now() - h.at < maxAge)) return Promise.resolve();
     h.loading = true;
-    return fetch(url.replace('/markets.json', '/' + file + '.json'), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+    return fetch(url.replace('/markets.json', '/' + file + '.json'), { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; })   // no-cache: unchanged files come back as a tiny "not modified"
       .then(function (d) { if (d && d.s) { h.data = d; h.at = Date.now(); } }, function () {})
       .then(function () { h.loading = false; if (tab === 'watch') drawCharts(); });
   }
@@ -367,9 +363,10 @@
     if (d2 && d2.length) MAS.forEach(function (ma) { lvl[ma[0]] = d2[d2.length - 1]['ma' + ma[0]]; });
     return { pts: pts, daily: false, lvl: lvl };
   }
-  function chartSVG(k, w) {
+  var chartGeo = {};
+  function chartSVG(k, w, tall) {
     var q = quote(k), sr = series(k);
-    var H = 140, padR = 46, padB = 14, padT = 6, W = Math.max(120, w);
+    var H = tall || 140, padR = 46, padB = 14, padT = 6, W = Math.max(120, w);
     if (!sr || sr.pts.length < 2) return '<svg viewBox="0 0 ' + W + ' ' + H + '"><text x="' + (W / 2) + '" y="' + (H / 2) + '" fill="#555" font-size="10" text-anchor="middle">' + (sr ? 'No data for this range' : 'Loading…') + '</text></svg>';
     var p = sr.pts, lo = Infinity, hi = -Infinity;
     p.forEach(function (x) {
@@ -412,7 +409,8 @@
     o += '<path d="' + d + '" fill="none" stroke="' + LINE + '" stroke-width="1" stroke-linejoin="round"/>' +
       '<rect x="' + pw + '" y="' + (ly - 6.5).toFixed(1) + '" width="' + padR + '" height="13" fill="' + LINE + '"/>' +
       '<text x="' + (pw + 3) + '" y="' + (ly + 3).toFixed(1) + '" fill="#000" font-size="9" font-weight="700" font-family="Menlo,monospace">' + wnum(last.c, dp) + '</text>';
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + o + '</svg>';
+    chartGeo[k] = { W: W, H: H, pw: pw, padT: padT, ph: ph, dp: dp, pts: p, xs: p.map(function (x, i) { return X(x, i); }), ys: p.map(function (x) { return Y(x.c); }) };
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="height:' + H + 'px">' + o + '<g class="xh"></g></svg>';
   }
   function maLegend(k) {   // latest 50/100/200-day values under the chart title
     if (!WL.dma) return '';
@@ -458,7 +456,7 @@
       '<table class="wl"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"></colgroup><thead><tr><th>SECURITY</th><th>LAST PX</th><th>1D %CHG</th><th>CHT</th></tr></thead><tbody>' + rows +
       '<tr class="wadd"><td colspan="4"><button type="button" data-wadd="1">+ Add security</button></td></tr></tbody></table>' +
       '<p class="wfoot">Delayed prices from ' + esc((MKT && MKT.source) || 'Yahoo Finance') + (MKT && MKT.updated ? ', ' + esc(MKT.updated.slice(11)) + ' SGT' : '') + '. Yields show the change in basis points. ' +
-      (WL.dma ? 'DMA: 50-day (blue), 100-day (purple) and 200-day (red) moving averages of daily closes; on 1D they show as dashed levels; on 5Y (weekly points) they use 10, 20 and 40 weeks. ' : '') + 'Tap a security to move or remove it. Pull down to refresh.</p>';
+      (WL.dma ? 'DMA: 50-day (blue), 100-day (purple) and 200-day (red) moving averages of daily closes; on 1D they show as dashed levels; on 5Y (weekly points) they use 10, 20 and 40 weeks. ' : '') + 'Tap a chart to enlarge it; swipe the charts to change view. Tap a security to move or remove it. Pull down to refresh.</p>';
     drawCharts();
   }
   function toggleChart(k) {
@@ -508,8 +506,47 @@
       persist(); renderWatch(); closeSheet(); flashToast(d + ' removed');
     }
   });
+  function bigChart(k) {
+    var q = quote(k), w = Math.min(window.innerWidth, 672) - 28;
+    var sr = series(k), p = sr && sr.pts;
+    var from = WL.range === '1D' && q && q.prev ? q.prev : p && p.length ? p[0].c : null, to = q && q.price != null ? q.price : p && p.length ? p[p.length - 1].c : null;
+    openSheet('<div class="wbig"><div class="wh"><b>' + esc(k) + '</b><span class="p">' + (to != null ? wnum(to, dpFor(q, to)) : '') + '</span>' + chgHTML(q, from, to) +
+      '<span class="r">' + esc(WL.range) + '</span></div>' + maLegend(k) +
+      '<div id="bigc" class="bigc">' + chartSVG(k, w, Math.round(Math.min(window.innerHeight * 0.45, 340))) + '</div>' +
+      '<div id="bigx" class="bigx">Touch and drag across the chart to read prices.</div></div>' +
+      '<p class="small">' + esc(q ? q.name : '') + '</p><div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
+    var box = $('bigc'), g = chartGeo[k];
+    if (!g) return;
+    function at(e) {
+      var r = box.getBoundingClientRect(), x = ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) / r.width * g.W, best = 0;
+      for (var i = 1; i < g.xs.length; i++) if (Math.abs(g.xs[i] - x) < Math.abs(g.xs[best] - x)) best = i;
+      var pt = g.pts[best], d = new Date(pt.t), xs = g.xs[best].toFixed(1), ys = g.ys[best].toFixed(1);
+      box.querySelector('.xh').innerHTML = '<line x1="' + xs + '" x2="' + xs + '" y1="' + g.padT + '" y2="' + (g.padT + g.ph) + '" stroke="#ffa21f" stroke-width="0.8"/>' +
+        '<line x1="0" x2="' + g.pw + '" y1="' + ys + '" y2="' + ys + '" stroke="#ffa21f" stroke-width="0.6" stroke-dasharray="2 2"/><circle cx="' + xs + '" cy="' + ys + '" r="3" fill="#ffa21f"/>';
+      var M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      var when = d.getDate() + ' ' + M[d.getMonth()] + ' ' + d.getFullYear() + (WL.range === '1D' ? ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) : '');
+      var first = g.pts[0].c, ch = q && q.kind === 'yield' ? ((pt.c - first) * 100 >= 0 ? '+' : '−') + Math.abs((pt.c - first) * 100).toFixed(1) + 'bp' : ((pt.c - first) / first * 100 >= 0 ? '+' : '−') + Math.abs((pt.c - first) / first * 100).toFixed(2) + '%';
+      $('bigx').innerHTML = '<b>' + wnum(pt.c, g.dp) + '</b> · ' + when + ' · <span class="small">' + ch + ' from the start of the chart</span>';
+      if (e.cancelable) e.preventDefault();
+    }
+    box.addEventListener('touchstart', at, { passive: false });
+    box.addEventListener('touchmove', at, { passive: false });
+    box.addEventListener('mousemove', at);
+  }
+  var wsw = null, wSwiped = false;
+  $('watch').addEventListener('touchstart', function (e) { wsw = e.target.closest('#wgrid') && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
+  $('watch').addEventListener('touchend', function (e) {
+    if (!wsw) return;
+    var t = e.changedTouches[0], dx = t.clientX - wsw.x, dy = t.clientY - wsw.y; wsw = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+    var nv = WL.view + (dx < 0 ? 1 : -1); if (nv < 0 || nv > 2) return;
+    wSwiped = true; setTimeout(function () { wSwiped = false; }, 400);
+    WL.view = nv; WL.range = WL.vranges[nv]; persist(); renderWatchChips(); renderWatch(); flashToast(vname(nv));
+  }, { passive: true });
   $('watch').addEventListener('click', function (e) {
+    if (wSwiped) return;
     var b = e.target.closest('[data-wchart]'); if (b) { toggleChart(b.getAttribute('data-wchart')); return; }
+    var cg = e.target.closest('[data-wsvg]'); if (cg) { bigChart(cg.getAttribute('data-wsvg')); return; }
     if (e.target.closest('[data-wadd]')) { wAddSheet(); return; }
     b = e.target.closest('[data-wrow]'); if (b) wRowSheet(b.getAttribute('data-wrow'));
   });
@@ -729,7 +766,12 @@
     var pinned = list.filter(function (n) { return n.pinned; }), rest = list.filter(function (n) { return !n.pinned; });
     $('notes').innerHTML = '<div class="actions" style="margin-top:0.5rem"><button class="btn primary" type="button" data-newnote="1">+ New note</button></div>' + (pinned.length ? '<h2 class="mbar"><span>📌 PINNED</span><span class="n">' + pinned.length + '</span></h2>' + pinned.map(row).join('') : '') +
       '<h2 class="mbar"><span>NOTES</span><span class="n">' + rest.length + '</span></h2>' +
-      (rest.length ? rest.map(row).join('') : '<p class="empty">' + (q ? 'NO MATCHES' : pinned.length ? 'No other notes.' : 'No notes yet. Tap + ADD to write one.') + '</p>');
+      (rest.length ? rest.map(row).join('') : '<p class="empty">' + (q ? 'NO MATCHES' + (noteFilter !== 'all' ? ' IN ' + esc(noteFilter.toUpperCase()) : '') : pinned.length ? 'No other notes.' : noteFilter !== 'all' ? 'No ' + esc(noteFilter) + ' notes yet.' : 'No notes yet. Tap + New note to write one.') + '</p>');
+    if (q && noteFilter !== 'all') {   // matches in other categories
+      var elsewhere = notes.filter(function (n) { return (n.title || n.body) && n.cat !== noteFilter && (n.title + ' ' + n.body + ' ' + (n.cat || '')).toLowerCase().indexOf(q) >= 0; }).length;
+      if (elsewhere) $('notes').innerHTML += '<div class="actions"><button class="btn" type="button" data-nall="1">' + elsewhere + ' more in other categories · search all</button></div>';
+    }
+    $('q').placeholder = noteFilter === 'all' ? 'search notes' : 'search ' + noteFilter + ' notes';
   }
   function renderNoteChips() {
     var count = function (c) { return notes.filter(function (n) { return (n.title || n.body) && (c === 'all' || n.cat === c); }).length; };
@@ -885,24 +927,6 @@
     clearTimeout(noteTimer); noteTimer = setTimeout(persist, 600);
   }
   function noteMsg(html) { var m = $('n-msg'); if (m) { m.innerHTML = html; m.hidden = !html; } }
-  async function noteTidy() {
-    var text = $('n-body').value.trim();
-    if (!text) return noteMsg('Write something first.');
-    var st = aiStatus();
-    if (st === 'unsupported') return noteMsg('AI needs WebGPU, which this browser doesn\'t offer.');
-    if (st === 'none') return noteMsg('Set up the on-device AI first: ··· → AI on this iPhone.');
-    noteMsg('Tidying on this iPhone…');
-    try {
-      var m = await ensureAI(function (p, t) { noteMsg('Loading AI… ' + Math.round(p * 100) + '%'); });
-      var out = await m.tidy(text);
-      if (!out || !out.bullets || !out.bullets.length) return noteMsg('AI couldn\'t tidy that. Your note is unchanged.');
-      noteEd.prevBody = noteEd.body; noteEd.prevTitle = noteEd.title;
-      $('n-body').value = out.bullets.map(function (b) { return '• ' + b.replace(/^[•\-\s]+/, ''); }).join('\n');
-      if (!$('n-title').value.trim() && out.title) $('n-title').value = out.title;
-      noteChanged();
-      noteMsg('Tidied. <button class="btn link" type="button" data-act="n-undo">Undo</button>');
-    } catch (e) { noteMsg('AI couldn\'t tidy that (' + esc(e.message || e) + '). Your note is unchanged.'); }
-  }
   // swipe left/right inside an open email
   var msx = null;
   $('sheet').addEventListener('touchstart', function (e) { msx = $('sheet').querySelector('.mbody') && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null; }, { passive: true });
@@ -1059,54 +1083,6 @@
     $('mail').innerHTML = h;
     SC().scrollTop = y;
   }
-  // ---- bookings: confirmations in mail -> calendar entries for you to check ----
-  var BOOK_Q = 'newer_than:90d subject:(booking OR reservation OR reserved OR confirmed OR confirmation OR itinerary OR "e-ticket" OR eticket OR ticket OR tickets OR "your trip" OR "your flight" OR "your stay" OR appointment OR "table for") -category:promotions -category:social';
-  var BOOK_LINE = /(check[- ]?in|check[- ]?out|depart|departure|arriv|flight|boarding|pick[- ]?up|reservation|booked for|booking (?:date|for)|date|time|when|event|show|session|table for|appointment|start)/i;
-  function bookTitle(subj) {
-    var t = subj.replace(/^\s*(re|fwd?|fw):\s*/i, '')
-      .replace(/\b(your\s+)?(booking|reservation|order|appointment)\s+(is\s+)?(has been\s+)?(confirmed|confirmation|received)\b[:\s\-–—!]*/i, '')
-      .replace(/^\s*(confirmed|confirmation|booking confirmation|reservation confirmation)\b[:\s\-–—!]*/i, '').trim();
-    return (t || subj).slice(0, 80);
-  }
-  function findBookings() {
-    if (!Gmail.token()) { renderMail(); return; }
-    openSheet('<h2>Find bookings</h2><p>Looking through the last 90 days of mail for confirmations…</p>');
-    var seen = {}; bookSeen.forEach(function (id) { seen[id] = 1; });
-    Gmail.ids(BOOK_Q, 60).then(function (ids) {
-      ids = ids.filter(function (id) { return !seen[id]; }).slice(0, 40);
-      return Gmail.pool(ids, 6, function (id) { return Gmail.full(id); });
-    }).then(function (msgs) {
-      var drafts = [];
-      (msgs || []).forEach(function (m) {
-        if (!m) return;
-        bookSeen.push(m.id);
-        var lines = [];
-        (m.text || '').split(/\n+/).map(function (l) { return l.trim(); }).filter(function (l) { return l && l.length < 180 && BOOK_LINE.test(l); }).forEach(function (l) {
-          if (/^(time|start(?:s| time)?|from)\b/i.test(l) && lines.length) lines[lines.length - 1] += ' ' + l; else lines.push(l);
-        });
-        lines = lines.slice(0, 15);
-        var found = GC.parseText(lines.join('\n'), new Date()).filter(function (d) { return d.date && d.date >= todayISO; });
-        var dates = {}, title = bookTitle(m.subject), n = 0;
-        found.forEach(function (d) {
-          if (dates[d.date] || n >= 2) return;
-          dates[d.date] = 1;
-          drafts.push({ title: title + (n ? ' (ends)' : ''), date: d.date, time: d.time, place: d.place || '', note: d.src.slice(0, 120),
-            src: 'From email: ' + m.subject + ' · ' + m.from, cat: GC.inferCat(m.subject + ' ' + title) });
-          n++;
-        });
-      });
-      persist();
-      if (!drafts.length) {
-        openSheet('<h2>Find bookings</h2><p>No new upcoming bookings found in the last 90 days.</p><p class="small">Checked ' + (msgs || []).filter(Boolean).length + ' new emails. Emails already checked aren\'t looked at again.</p>' +
-          '<div class="actions"><button class="btn primary" type="button" data-act="close">OK</button></div>');
-        return;
-      }
-      drafts.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
-      showConfirm(drafts, 'Found in your mail. Remove anything that isn\'t right, then save.');
-    }, function (e) {
-      openSheet('<h2>Find bookings</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>');
-    });
-  }
   // ---- quick summary: the most informative sentences plus key facts, worked out on the phone (no AI, nothing sent) ----
   var SUM_NOISE = /(unsubscribe|view (?:this|it) in (?:your )?browser|privacy (?:policy|notice)|all rights reserved|©|copyright|do not reply|no-?reply|this (?:e-?mail|message) (?:was|is) (?:sent|intended)|manage (?:your )?(?:preferences|subscription)|terms (?:and|&) conditions|click here|download (?:the|our) app|follow us|sent from my|confidential)/i;
   var SUM_GREET = /^(dear|hi|hello|hey|good (?:morning|afternoon|evening)|greetings|thank you for|thanks for|we hope|hope you|regards|best|cheers|warm regards|kind regards|sincerely|yours)\b/i;
@@ -1222,198 +1198,32 @@
     }, function (e) { if (mailNavId === id) openSheet('<h2>Mail</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="gmail-go">Sign in again</button></div>'); });
   }
 
-  // =====================================================================
-  // Insights from card transaction alert emails (stored encrypted, like everything else)
-  // =====================================================================
-  var INS = { period: 'month', scanning: false, msg: '' };
-  var INS_CHIPS = [['month', 'This month'], ['last', 'Last month'], ['3m', '3 months'], ['6m', '6 months']];
-  var MCATS = [
-    ['Food & drinks', /grab ?food|foodpanda|deliveroo|restaurant|cafe|coffee|starbucks|kopi|mcdonald|kfc|burger|bakery|bar\b|bistro|kitchen|eatery|food|dining|sushi|ramen|pizza|toast box|ya kun|koufu|kopitiam/i],
-    ['Groceries', /fairprice|ntuc|cold storage|sheng siong|giant|redmart|don don donki|market|grocer|mustafa/i],
-    ['Transport', /grab|gojek|tada|comfort|cdg|zig|simplygo|transitlink|bus|mrt|taxi|shell|esso|caltex|spc|sinopec|parking|ez-?link|lta/i],
-    ['Subscriptions', /netflix|spotify|apple\.com|itunes|google \*|youtube|disney|openai|chatgpt|icloud|microsoft|adobe|prime video|audible|patreon|substack/i],
-    ['Shopping', /amazon|shopee|lazada|taobao|qoo10|uniqlo|zara|h&m|ikea|courts|harvey norman|challenger|best denki|decathlon|muji|charles|cotton on|watsons|guardian|sephora|takashimaya|isetan|tangs|robinsons/i],
-    ['Travel', /airline|airways|singapore air|scoot|jetstar|airasia|cathay|agoda|booking\.com|expedia|airbnb|hotel|trip\.com|klook|changi/i],
-    ['Bills & utilities', /sp services|sp group|singtel|starhub|m1 |circles|giga|insurance|aia|prudential|great eastern|income|town council|iras|cpf/i],
-    ['Health & fitness', /clinic|medical|hospital|dental|pharmacy|gym|fitness|anytime|virgin active|classpass|yoga/i],
-    ['Entertainment', /cinema|golden village|shaw|cathay cineplex|steam|playstation|nintendo|xbox|ticket|sistic|klook/i]
-  ];
-  var BANKS = [['DBS/POSB', /dbs\.com|posb/i], ['UOB', /uob/i], ['Citi', /citi/i], ['HSBC', /hsbc/i], ['Trust', /trustbank|trust\.bank/i], ['OCBC', /ocbc/i], ['StanChart', /\bsc\.com|standard chartered/i], ['Amex', /americanexpress|amex/i]];
-  var TX_TRIGGER = /(transaction|spent|purchase|charged|card (?:was|has been) used|has been used|debited|you(?:'ve| have)? made|payment of|transaction alert|card alert)/i;
-  var TX_SKIP = /\b(otp|one[- ]time (?:password|pin|code)|verification code|e-?statement|statement is ready|statement of account|payment received|thank you for your payment|login|log in|password|promotion|promo|offer|reward|exclusive|win|apply now|limited time|newsletter|survey|invitation|webinar|update your|security alert|card (?:is )?ready|activate)\b/i;
-  var TX_NOT_SPEND = /(payment (?:to|for) your (?:card|account)|card payment|bill payment received|has been credited|credited to your|incoming|received (?:a )?(?:paynow|transfer|funds|payment)|fund transfer|funds transfer|salary|interest credited|cash ?back credited|giro deduction for your card)/i;
-  var BANK_FROM = 'from:dbs.com OR from:posb.com.sg OR from:uobgroup.com OR from:uob.com.sg OR from:citibank.com.sg OR from:citibank.com OR from:citi.com OR from:hsbc.com.sg OR from:hsbc.com OR from:trustbank.sg OR from:trust.bank OR from:ocbc.com OR from:sc.com OR from:americanexpress.com OR from:maybank.com.sg';
-  var NEAR_BALANCE = /(balance|limit|available|outstanding|minimum|credit line|total due)[^.]{0,25}$/i;
-  var CCYS = 'SGD|S\\$|USD|US\\$|EUR|GBP|JPY|AUD|NZD|MYR|HKD|THB|IDR|CNY|CNH|KRW|INR|CHF|CAD';
-  // reads one alert email into { amt, ccy, merchant, card, bank } or null
-  function parseTxn(m) {
-    var text = (m.subject + '\n' + (m.text || m.snippet || '')).slice(0, 4000).replace(/\s+/g, ' ');
-    var bank0 = (BANKS.filter(function (b) { return b[1].test(m.fromEmail + ' ' + m.from); })[0] || [''])[0];
-    if (!bank0) return null;                                              // only your banks' alerts
-    if (TX_SKIP.test(m.subject) || !TX_TRIGGER.test(text) || TX_NOT_SPEND.test(text.slice(0, 600))) return null;
-    // the purchase amount: the first currency amount after the trigger word that isn't a balance or limit
-    var trig = TX_TRIGGER.exec(text), from = trig ? Math.max(0, trig.index - 120) : 0;
-    var re = new RegExp('(' + CCYS + '|\\$)\\s?([\\d,]+(?:\\.\\d{1,2})?)', 'gi'), am = null, cand;
-    while ((cand = re.exec(text))) {
-      if (cand.index < from) continue;
-      if (NEAR_BALANCE.test(text.slice(Math.max(0, cand.index - 40), cand.index))) continue;
-      if (cand[1] === '$' && !/\.\d{2}$/.test(cand[2])) continue;
-      am = cand; break;
-    }
-    if (!am) return null;
-    var ccy = am[1].toUpperCase().replace('US$', 'USD').replace('S$', 'SGD');
-    if (ccy === '$') ccy = 'SGD';
-    var amt = parseFloat(am[2].replace(/,/g, ''));
-    if (!(amt > 0)) return null;
-    var after = text.slice(am.index + am[0].length, am.index + am[0].length + 160);
-    var mm = /\b(?:at|@|to|merchant:?)\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|at|was|has|is|if|ref|reference)\b|[.,;:()]|\s{2}|$)/i.exec(after)
-      || /\b(?:at|@|merchant:?)\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|was|has|is)\b|[.,;:()]|$)/i.exec(text);
-    var merchant = mm ? mm[1].trim().replace(/\s+/g, ' ') : '';
-    if (/^(your|the|a|an|card|account)\b/i.test(merchant)) {   // e.g. "your card ending 1234": take the name after "at" instead
-      var at2 = /\bat\s+([A-Za-z0-9][A-Za-z0-9&'.\-*\/ ]{1,40}?)(?=\s+(?:on|in|for|using|with|via|was|has|is)\b|[.,;:()]|$)/i.exec(text);
-      merchant = at2 ? at2[1].trim() : '';
-    }
-    var cm = /(?:ending(?:\s+(?:in|with))?|card\s*(?:no\.?|number)?\s*[x*•]+|[x*•]{4,})\s*[-:]?\s*(\d{4})\b/i.exec(text);
-    var bank = bank0;
-    var refund = /\b(refund|reversal|reversed|credited|cashback)\b/i.test(text) && !/debited|spent|charged/i.test(text.slice(0, 200));
-    return { id: m.id, date: m.date, amt: refund ? -amt : amt, ccy: ccy, big: Math.abs(amt) > 20000 && (ccy === 'SGD' || ccy === 'USD' || ccy === 'EUR' || ccy === 'GBP'), merchant: merchant || '(unknown)', card: cm ? cm[1] : '', bank: bank,
-             cat: (MCATS.filter(function (c) { return c[1].test(merchant + ' ' + m.subject); })[0] || ['Other'])[0] };
-  }
-  function toSGD(t) {
-    if (t.ccy === 'SGD') return t.amt;
-    var u = Tools.rates(), k = t.ccy === 'CNY' ? 'CNH' : t.ccy;
-    return u[k] && u.SGD ? t.amt * u[k] / u.SGD : NaN;
-  }
-  function scanTxns() {
-    if (!Gmail.token()) { INS.msg = ''; renderInsights(); return Promise.resolve(); }
-    if (INS.scanning) return Promise.resolve();
-    INS.scanning = true; INS.msg = 'Searching your mail for card alerts…'; renderInsights();
-    var days = txMeta.last ? Math.min(400, Math.ceil((Date.now() - txMeta.last) / 864e5) + 2) : 180;
-    var q = 'newer_than:' + days + 'd (' + BANK_FROM + ') -OTP -"one-time"';
-    var have = {}; txns.forEach(function (t) { have[t.id] = 1; }); (txMeta.failed || []).forEach(function (f) { have[f.id] = 1; });
-    return Gmail.ids(q, 500).then(function (ids) {
-      ids = ids.filter(function (id) { return !have[id]; });
-      INS.msg = 'Reading ' + ids.length + ' new email' + (ids.length === 1 ? '' : 's') + '…'; renderInsights();
-      return Gmail.pool(ids, 6, function (id) { return Gmail.full(id); });
-    }).then(function (msgs) {
-      var added = 0;
-      (msgs || []).forEach(function (m) {
-        if (!m) return;
-        var t = parseTxn(m);
-        if (t) { txns.push(t); added++; } else (txMeta.failed = txMeta.failed || []).push({ id: m.id, s: m.subject.slice(0, 80), f: m.from.slice(0, 40), d: m.date });
-      });
-      txMeta.failed = (txMeta.failed || []).slice(-300);
-      txMeta.last = Date.now(); txMeta.v = 2; persist();
-      INS.msg = added ? 'Added ' + added + ' transaction' + (added === 1 ? '' : 's') + '.' : 'No new card alerts found.';
-    }, function (e) { INS.msg = 'Scan failed: ' + (e.message || e); })
-      .then(function () { INS.scanning = false; renderInsights(); });
-  }
-  function periodRange(p) {
-    var n = new Date(), y = n.getFullYear(), mo = n.getMonth();
-    if (p === 'month') return [new Date(y, mo, 1), new Date(y, mo + 1, 1), new Date(y, mo - 1, 1), new Date(y, mo, 1)];
-    if (p === 'last') return [new Date(y, mo - 1, 1), new Date(y, mo, 1), new Date(y, mo - 2, 1), new Date(y, mo - 1, 1)];
-    var k = p === '3m' ? 3 : 6;
-    return [new Date(y, mo - k + 1, 1), new Date(y, mo + 1, 1), new Date(y, mo - 2 * k + 1, 1), new Date(y, mo - k + 1, 1)];
-  }
-  function renderInsChips() {
-    $('ichips').innerHTML = INS_CHIPS.map(function (c) { return '<button class="chip" type="button" data-i="' + c[0] + '" aria-pressed="' + (INS.period === c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
-  }
-  function renderInsights() {
-    var h = '';
-    if (!txns.length && !Gmail.token()) {
-      $('ins').innerHTML = signinCard('Insights are built from the card transaction alert emails your banks send.') +
-        '<p class="small" style="margin-top:0.8rem">Tip: in each bank\'s app, turn on email alerts for card transactions (many let you set the alert amount to $0.01) so every purchase is counted.</p>';
-      return;
-    }
-    h += '<div class="actions" style="margin-top:0.6rem"><span class="small grow">' + txns.length + ' transactions' + (txMeta.last ? ' · last scan ' + esc(mailWhen(txMeta.last)) : '') + (INS.msg ? '<br>' + esc(INS.msg) : '') + '</span>' +
-      (Gmail.token() ? '<button class="btn primary" type="button" data-act="ins-scan"' + (INS.scanning ? ' disabled' : '') + '>' + (INS.scanning ? 'Scanning…' : 'Scan mail') + '</button>'
-        : '<button class="btn primary" type="button" data-act="gmail-go">Sign in to scan</button>') + '</div>';
-    var r = periodRange(INS.period), inP = function (t, a, b) { return t.date >= +a && t.date < +b; };
-    var counted = function (t) { return !t.x && !(t.big && !t.ok); };
-    var allCur = txns.filter(function (t) { return inP(t, r[0], r[1]); });
-    var cur = allCur.filter(counted), prev = txns.filter(function (t) { return inP(t, r[2], r[3]) && counted(t); });
-    var held = allCur.filter(function (t) { return t.big && !t.ok && !t.x; });
-    var sum = function (l) { return l.reduce(function (s2, t) { var v = toSGD(t); return s2 + (isFinite(v) ? v : 0); }, 0); };
-    var total = sum(cur), ptotal = sum(prev), $$ = function (v) { return '$' + fmt0(v); };
-    if (!cur.length) { $('ins').innerHTML = h + '<p class="empty">No card transactions found for this period' + (Gmail.token() ? '. Tap Scan mail.' : '.') + '</p>'; return; }
-    var chg = ptotal ? (total - ptotal) / ptotal * 100 : null;
-    var proj = '';
-    if (INS.period === 'month') { var n = new Date(), dim = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate(); proj = $$(total / n.getDate() * dim) + ' by month-end'; }
-    h += '<div class="kpis"><div><span>Spent (SGD)</span><b>' + $$(total) + '</b><i>' + cur.length + ' transactions</i></div>' +
-      '<div><span>vs previous</span><b>' + (chg == null ? '—' : (chg > 0 ? '+' : '') + fmt0(chg) + '%') + '</b><i>' + $$(ptotal) + ' before</i></div>' +
-      '<div><span>' + (proj ? 'On track for' : 'Per month') + '</span><b>' + (proj ? proj.split(' ')[0] : $$(total / (INS.period === '3m' ? 3 : INS.period === '6m' ? 6 : 1))) + '</b><i>' + (proj ? 'at this pace' : 'average') + '</i></div></div>';
-    // by category
-    var group = function (key) { var g = {}; cur.forEach(function (t) { var v = toSGD(t); if (isFinite(v)) g[key(t)] = (g[key(t)] || 0) + v; }); return Object.keys(g).map(function (k) { return [k, g[k]]; }).sort(function (a, b) { return b[1] - a[1]; }); };
-    var bars = function (list, max) {
-      var top = list.length ? Math.max(list[0][1], 1) : 1;
-      return list.slice(0, max).map(function (x) { return '<div class="ibar"><span class="k">' + esc(x[0]) + '</span><span class="tr3"><div style="width:' + Math.max(2, x[1] / top * 100) + '%"></div></span><span class="v">' + $$(x[1]) + '</span></div>'; }).join('');
-    };
-    h += '<section class="bsec"><h2 class="mbar"><span>BY CATEGORY</span></h2>' + bars(group(function (t) { return t.cat; }), 12) + '</section>';
-    h += '<section class="bsec"><h2 class="mbar"><span>TOP MERCHANTS</span></h2>' + bars(group(function (t) { return t.merchant; }), 8) + '</section>';
-    h += '<section class="bsec"><h2 class="mbar"><span>BY CARD</span></h2>' + bars(group(function (t) { return (t.bank || 'Card') + (t.card ? ' ··' + t.card : ''); }), 8) + '</section>';
-    // subscriptions: same merchant in 2+ different months at a similar amount
-    var byM = {};
-    txns.forEach(function (t) { if (counted(t) && t.amt > 0 && t.merchant !== '(unknown)') (byM[t.merchant.toLowerCase()] = byM[t.merchant.toLowerCase()] || []).push(t); });
-    var subs = Object.keys(byM).map(function (k) {
-      var l = byM[k], months = {}; l.forEach(function (t) { months[GC.iso(new Date(t.date)).slice(0, 7)] = 1; });
-      var amts = l.map(toSGD).filter(isFinite).sort(function (a, b) { return a - b; }), med = amts[Math.floor(amts.length / 2)];
-      var similar = amts.filter(function (a) { return Math.abs(a - med) <= Math.max(1, med * 0.15); }).length;
-      return { name: l[0].merchant, months: Object.keys(months).length, med: med, ok: Object.keys(months).length >= 2 && similar >= 2 && similar / amts.length >= 0.6 };
-    }).filter(function (x) { return x.ok; }).sort(function (a, b) { return b.med - a.med; });
-    h += '<section class="bsec"><h2 class="mbar"><span>LIKELY SUBSCRIPTIONS</span><span class="n">' + subs.length + '</span></h2>' +
-      (subs.length ? subs.slice(0, 12).map(function (x) { return '<div class="bq"><b>' + esc(x.name) + '</b><span class="v">' + $$(x.med) + ' · ' + x.months + ' months</span></div>'; }).join('') +
-        '<p class="small">About ' + $$(subs.reduce(function (s2, x) { return s2 + x.med; }, 0)) + ' a month in total.</p>' : '<p class="bnone">None spotted yet (needs at least two months of alerts).</p>') + '</section>';
-    // largest
-    var big = cur.slice().sort(function (a, b) { return (toSGD(b) || 0) - (toSGD(a) || 0); }).slice(0, 5);
-    h += '<section class="bsec"><h2 class="mbar"><span>LARGEST</span></h2>' + big.map(function (t) {
-      return '<div class="bq"><b>' + esc(mailWhen(t.date)) + ' · ' + esc(t.merchant) + '</b><span class="v">' + (t.ccy !== 'SGD' ? esc(t.ccy) + ' ' + fmt2(t.amt) + ' ≈ ' : '') + $$(toSGD(t)) + '</span></div>';
-    }).join('') + '</section>';
-    // foreign currency
-    var fx = cur.filter(function (t) { return t.ccy !== 'SGD'; }), fxT = sum(fx);
-    if (fx.length) h += '<p class="small" style="margin-top:0.6rem">Foreign currency: ' + $$(fxT) + ' (' + fmt0(fxT / total * 100) + '% of spending) across ' + fx.length + ' transactions, converted at today\'s mid rates.</p>';
-    // all transactions + unread alerts
-    if (held.length) h += '<section class="bsec"><h2 class="mbar"><span>CHECK THESE · NOT COUNTED</span><span class="n">' + held.length + '</span></h2><p class="small">Unusually large, so left out of the totals. Tap one that is a real purchase to count it.</p>' +
-      held.map(function (t) { return '<button type="button" class="bq txb" data-tx="' + esc(t.id) + '" data-ok="1"><b>' + esc(mailWhen(t.date)) + ' · ' + esc(t.merchant) + '</b><span class="v">' + esc(t.ccy) + ' ' + fmt2(t.amt) + '</span></button>'; }).join('') + '</section>';
-    h += '<details class="sched"><summary>Transactions (' + allCur.length + ') · tap to exclude or include</summary>' + allCur.slice().sort(function (a, b) { return b.date - a.date; }).map(function (t) {
-      return '<button type="button" class="bq txb' + (counted(t) ? '' : ' txoff') + '" data-tx="' + esc(t.id) + '"><b>' + esc(mailWhen(t.date)) + ' · ' + esc(t.merchant) + (t.bank ? ' <span class="pl">' + esc(t.bank) + '</span>' : '') + '</b><span class="v">' + (t.ccy !== 'SGD' ? esc(t.ccy) + ' ' : '$') + fmt2(t.amt) + '</span></button>';
-    }).join('') + '</details>' +
-      '<div class="actions" style="margin-top:0.4rem"><button class="btn link" type="button" data-act="ins-reset">Clear and rescan from scratch</button></div>';
-    var fl = (txMeta.failed || []).slice(-30).reverse();
-    if (fl.length) h += '<details class="sched"><summary>Emails it couldn\'t read (' + (txMeta.failed || []).length + ')</summary><p class="small">If any of these are card purchases, send me one (with numbers blanked out) and I\'ll teach it that format.</p>' +
-      fl.map(function (f) { return '<div class="bq"><b>' + esc(f.f) + '</b><span class="v small">' + esc(f.s) + '</span></div>'; }).join('') + '</details>';
-    h += '<p class="small">Built from card transaction alert emails. Purchases your bank doesn\'t email about aren\'t counted. Non-SGD amounts use today\'s mid rates.</p>';
-    $('ins').innerHTML = h;
-  }
-  function fmt0(v) { return isFinite(v) ? Math.round(v).toLocaleString('en-US') : '—'; }
-  function fmt2(v) { return isFinite(v) ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; }
 
   function setTab(t) {
     if (tab === 'news' && t !== 'news' && NEWS) { lastSeen = NEWS.items.length ? NEWS.items[0].t : lastSeen; prefs('newsSeen', lastSeen); }
     if (tab === 'fan' && t !== 'fan' && FAN) { fanSeen = FAN.items.length ? FAN.items[0].t : fanSeen; prefs('fanSeen', fanSeen); }
     tab = t;
-    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief', nt = t === 'notes', ml = t === 'mail', ins = t === 'ins', wt = t === 'watch';
+    var cal = t === 'cal', news = t === 'news', fan = t === 'fan', tl = t === 'tools', br = t === 'brief', nt = t === 'notes', ml = t === 'mail', wt = t === 'watch';
     $('tab-mail').setAttribute('aria-pressed', ml); $('mail').hidden = !ml; $('mchips').hidden = !ml;
-    $('tab-ins').setAttribute('aria-pressed', ins); $('ins').hidden = !ins; $('ichips').hidden = !ins;
     $('tab-notes').setAttribute('aria-pressed', nt); $('notes').hidden = !nt; $('ntchips').hidden = !nt;
     $('tab-watch').setAttribute('aria-pressed', wt); $('watch').hidden = !wt; $('wchips').hidden = !wt; $('wren').hidden = !wt;
     $('tab-brief').setAttribute('aria-pressed', br); $('brief').hidden = !br;
     $('tab-cal').setAttribute('aria-pressed', cal); $('tab-news').setAttribute('aria-pressed', news); $('tab-fan').setAttribute('aria-pressed', fan); $('tab-tools').setAttribute('aria-pressed', tl);
     $('list').hidden = !cal; $('news').hidden = !news; $('fan').hidden = !fan; $('tools').hidden = !tl;
-    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt || ml || ins || wt; $('cmdrow').hidden = tl || br || ins || wt;
-    $('ask').hidden = true;   // assistant switched off for now
+    $('chips').hidden = !cal; $('nchips').hidden = !news; $('fchips').hidden = !fan; $('tchips').hidden = !tl; $('openx').hidden = cal || tl || br || nt || ml || wt; $('cmdrow').hidden = tl || br || wt;
     $('brandtxt').hidden = !br; $('jump').hidden = true;   // TODAY button removed
     $('add').hidden = !cal;                                   // + ADD only on the Calendar
     $('r1').hidden = br;                                      // the Brief has no top row; its menu sits by the greeting
-    $('q').value = ''; $('qclear').hidden = true;
+    $('q').value = ''; $('qclear').hidden = true; $('q').placeholder = 'search';
     if (news) { renderNewsChips(); renderNews(); loadNews(); SC().scrollTop = 0; }
     else if (fan) { renderFantasyChips(); renderFantasy(); loadFantasy(); SC().scrollTop = 0; }
     else if (tl) { $('tchips').innerHTML = Tools.chips(); Tools.draw(); SC().scrollTop = 0; }
     else if (br) { renderBrief(); loadNews(); SC().scrollTop = 0; }
     else if (nt) { renderNotes(); SC().scrollTop = 0; }
     else if (wt) { renderWatchChips(); renderWatch(); loadMarkets(); SC().scrollTop = 0; }
-    else if (ml || ins) {
+    else if (ml) {
       if (!Gmail.token() && Gmail.canRenew()) { Gmail.renew(); return; }   // quick hop to Google and back, no typing
-      if (ml) { renderMailChips(); renderMail(); if (!MAIL.list) loadMail(); } else { renderInsChips(); renderInsights(); }
+      renderMailChips(); renderMail(); if (!MAIL.list) loadMail();
       SC().scrollTop = 0;
     }
     else { showPast = false; render(); jumpToday(false); }
@@ -1423,7 +1233,6 @@
   $('tab-notes').addEventListener('click', function () { setTab('notes'); });
   $('tab-watch').addEventListener('click', function () { setTab('watch'); });
   $('tab-mail').addEventListener('click', function () { setTab('mail'); });
-  $('tab-ins').addEventListener('click', function () { setTab('ins'); });
   // older mail loads by itself when you scroll near the bottom
   SC().addEventListener('scroll', function () { if (tab === 'mail' && MAIL.next && !MAIL.more && SC().scrollTop + SC().clientHeight > SC().scrollHeight - 600) loadOlder(); }, { passive: true });
   var msw = null, mJust = false;
@@ -1460,18 +1269,8 @@
   }
   $('mail').addEventListener('pointerup', mEnd);
   $('mail').addEventListener('pointercancel', mEnd);
-  $('mail').addEventListener('click', function (e) { if (mJust) return; if (e.target.closest('[data-findbook]')) { findBookings(); return; } if (e.target.closest('[data-older]')) { loadOlder(); return; } var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
-  $('ins').addEventListener('click', function (e) {
-    var tb = e.target.closest('[data-tx]');
-    if (tb) {
-      var t = txns.filter(function (x) { return x.id === tb.getAttribute('data-tx'); })[0];
-      if (t) { if (tb.getAttribute('data-ok')) { t.ok = true; t.x = false; } else if (t.big && !t.ok && !t.x) { t.ok = true; } else { t.x = !t.x; } persist(); renderInsights(); }
-      return;
-    }
-    var g = e.target.closest('[data-act]'); if (!g) return;
-    if (g.getAttribute('data-act') === 'ins-reset') { txns = []; txMeta = { v: 2, last: 0, failed: [] }; persist(); INS.msg = 'Cleared. Tap Scan mail.'; renderInsights(); return; } if (g.getAttribute('data-act') === 'gmail-go') Gmail.start(); if (g.getAttribute('data-act') === 'ins-scan') scanTxns(); });
+  $('mail').addEventListener('click', function (e) { if (mJust) return; if (e.target.closest('[data-older]')) { loadOlder(); return; } var b = e.target.closest('[data-mid]'); if (b) openMail(b.getAttribute('data-mid')); var g = e.target.closest('[data-act="gmail-go"]'); if (g) Gmail.start(); });
   $('mchips').addEventListener('click', function (e) { var b = e.target.closest('[data-m]'); if (!b) return; MAIL.filter = b.getAttribute('data-m'); renderMailChips(); loadMail(); SC().scrollTop = 0; });
-  $('ichips').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (!b) return; INS.period = b.getAttribute('data-i'); renderInsChips(); renderInsights(); SC().scrollTop = 0; });
   function syncClear() { $('qclear').hidden = !$('q').value; }
   $('q').addEventListener('input', syncClear);
   $('qclear').addEventListener('click', function (e) {
@@ -1529,6 +1328,7 @@
   $('notes').addEventListener('pointercancel', nEnd);
   $('notes').addEventListener('click', function (e) {
     if (e.target.closest('[data-newnote]')) { openNote(null); return; }
+    if (e.target.closest('[data-nall]')) { noteFilter = 'all'; renderNotes(); return; }
     var d = e.target.closest('[data-ndel]'); if (d) { nOpen = null; deleteNote(d.getAttribute('data-ndel')); return; }
     var b = e.target.closest('[data-note]'); if (!b || nJust) return;
     if (nOpen) { nClose(); return; }
@@ -1928,7 +1728,7 @@
       return;
     }
     pull.busy = true; setPull(48, true);
-    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : tab === 'watch' ? (HIST = {}, loadMarkets()) : tab === 'mail' ? loadMail() : tab === 'ins' ? scanTxns() : Promise.all([loadNews(), loadMarkets(), loadFinance(), (BMAIL.at = 0, loadBriefMail())])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
+    (tab === 'news' ? loadNews() : tab === 'fan' ? loadFantasy() : tab === 'watch' ? (HIST = {}, loadMarkets()) : tab === 'mail' ? loadMail() : Promise.all([loadNews(), loadMarkets(), loadFinance(), (BMAIL.at = 0, loadBriefMail())])).then(function () { pull.busy = false; setPull(0, true); }, function () { pull.busy = false; setPull(0, true); });
   });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });   // no pinch zoom
 
@@ -2005,11 +1805,9 @@
 
   var lastPaste = '';
   function showPaste(prefill, msg) {
-    var st = aiStatus();
     openSheet('<h2>Add</h2><p>Type or paste anything: a message, an email, or your own rough notes.</p>' +
       '<textarea id="paste" placeholder="dinner w mum n dad sat 730 at jumbo&#10;&#10;23 Nov&#10;- Meet xxx&#10;- Submit xxx"></textarea>' +
       (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
-      '<div id="aiprog" hidden><div class="small" id="aiprogtxt">Starting AI…</div><div class="prog"><div id="aiprogbar"></div></div></div>' +
       '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button>' +
       '<button class="btn primary" type="button" data-act="parse">Read dates</button></div>');
     if (prefill) $('paste').value = prefill;
@@ -2254,182 +2052,10 @@
   document.addEventListener('pointerdown', function (e) { if (openRow && !e.target.closest('li')) closeOpen(); });
 
   // =====================================================================
-  // AI (on-device, see ai.js)
-  // =====================================================================
-  var AI = null, aiState = navigator.gpu ? 'unknown' : 'unsupported';
-  function aiSize() { return prefs('model') === 'large' ? 'large' : 'small'; }
-  function aiStatus() { return aiState === 'unknown' ? (prefs('aiReady') === aiSize() ? 'cached' : 'none') : aiState; }
-  async function aiModule() { return AI || (AI = await import('./ai.js')); }
-  async function ensureAI(onProgress) {
-    var m = await aiModule();
-    if (m.loaded(aiSize())) return m;
-    aiState = 'loading';
-    await m.load(aiSize(), onProgress);
-    aiState = 'ready'; prefs('aiReady', aiSize());
-    return m;
-  }
-  function progressTo(barId, txtId) {
-    return function (p, text) {
-      var bar = $(barId), t = $(txtId);
-      if (bar) bar.style.width = Math.round(p * 100) + '%';
-      if (t) t.textContent = text.replace(/\[.*?\]\s*/g, '').slice(0, 140) || 'Loading…';
-    };
-  }
-
-  async function aiRead() {
-    var text = $('paste').value;
-    if (!text.trim()) return;
-    lastPaste = text;
-    $('aiprog').hidden = false;
-    $('sheet').querySelectorAll('.actions .btn').forEach(function (b) { b.disabled = true; });
-    try {
-      var m = await ensureAI(progressTo('aiprogbar', 'aiprogtxt'));
-      $('aiprogtxt').textContent = 'Reading…'; $('aiprogbar').style.width = '100%';
-      var out = await m.extract(text, promptToday());
-      showConfirm(out.map(function (a) {
-        var t = (a.time || '').replace('-', '–');
-        return { title: a.title, date: GC.fromISOok(a.date) ? a.date : '', time: t ? GC.normTime(t) : '', place: a.place, note: a.note, cat: a.category, src: text,
-          flag: GC.fromISOok(a.date) ? '' : 'No clear date in the text. Pick one.' };
-      }));
-    } catch (e) {
-      showConfirm(GC.parseText(text, new Date()), 'AI couldn\'t read that (' + (e.message || e) + '), so this is the quick read.');
-    }
-  }
-
-  function showAISetup(msg) {
-    var st = aiStatus();
-    var sizes = { small: 'Standard (about 1 GB)', large: 'Larger and smarter (about 2 GB, slower)' };
-    openSheet('<h2>AI on this iPhone</h2>' +
-      (st === 'unsupported'
-        ? '<p>This browser doesn\'t offer WebGPU, which the AI needs. Everything else works without it.</p>'
-        : '<p>The AI runs entirely on this iPhone, offline once downloaded. Your text is never sent anywhere. The model downloads once (over Wi-Fi is best) and stays on the phone.</p>' +
-          '<div class="f"><label>Model<select id="ai-size">' + Object.keys(sizes).map(function (k) { return '<option value="' + k + '"' + (k === aiSize() ? ' selected' : '') + '>' + sizes[k] + '</option>'; }).join('') + '</select></label></div>' +
-          '<div class="small">Status: ' + ({ none: 'not downloaded', cached: 'downloaded', loading: 'loading', ready: 'ready' }[st] || st) + '</div>' +
-          (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
-          '<div id="aiprog" hidden><div class="small" id="aiprogtxt">Starting…</div><div class="prog"><div id="aiprogbar"></div></div></div>' +
-          '<div class="actions">' + (st !== 'none' ? '<button class="btn danger grow" type="button" data-act="ai-remove">Remove model</button>' : '<span class="grow"></span>') +
-          '<button class="btn" type="button" data-act="close">Close</button>' +
-          '<button class="btn primary" type="button" data-act="ai-download">' + (st === 'none' ? 'Download' : 'Load') + '</button></div>'));
-    if ($('ai-size')) $('ai-size').onchange = function () { prefs('model', this.value); aiState = navigator.gpu ? 'unknown' : 'unsupported'; showAISetup(); };
-  }
-  async function aiDownload() {
-    $('aiprog').hidden = false;
-    $('sheet').querySelectorAll('.actions .btn').forEach(function (b) { b.disabled = true; });
-    try {
-      await ensureAI(progressTo('aiprogbar', 'aiprogtxt'));
-      openSheet('<h2>AI ready</h2><p>Use <b>Read with AI</b> when adding, and <b>ASK</b> to ask questions or make changes.</p>' +
-        '<div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
-    } catch (e) {
-      aiState = navigator.gpu ? 'unknown' : 'unsupported'; prefs('aiReady', '');
-      showAISetup('Download or loading failed: ' + (e.message || e) + '. If the phone ran out of memory, try the Standard model.');
-    }
-  }
-  async function aiRemove() {
-    try { var m = await aiModule(); await m.remove(aiSize()); } catch (e) {}
-    prefs('aiReady', ''); aiState = navigator.gpu ? 'unknown' : 'unsupported';
-    showAISetup();
-  }
-
-  // ---------- ASK: questions and proposed changes ----------
-  var askHistory = [], pending = null, askBusy = false;
-  var STOP = { the: 1, and: 1, for: 1, with: 1, what: 1, when: 1, did: 1, last: 1, next: 1, this: 1, week: 1, month: 1, have: 1, any: 1, add: 1, move: 1, delete: 1, remove: 1, change: 1, show: 1, all: 1, my: 1, on: 1, to: 1, is: 1, are: 1, was: 1, from: 1, into: 1 };
-  function contextFor(q) {
-    var words = q.toLowerCase().split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2 && !STOP[w]; });
-    var lo = GC.iso(GC.addDays(new Date(), -14)), hi = GC.iso(GC.addDays(new Date(), 45));
-    var scored = allEntries().concat(financeItems()).map(function (e) {
-      var hay = [e.title, e.place, e.note, GC.CAT_BY_ID[catOf(e)].name].join(' ').toLowerCase();
-      var hit = words.some(function (w) { return hay.indexOf(w) >= 0; });
-      return { e: e, keep: hit || (e.date >= lo && e.date <= hi), hit: hit };
-    }).filter(function (x) { return x.keep; });
-    scored.sort(function (a, b) { return (b.hit - a.hit) || (a.e.date < b.e.date ? -1 : 1); });
-    return scored.slice(0, 45).map(function (x) { return x.e; }).sort(function (a, b) { return (a.date + a.time) < (b.date + b.time) ? -1 : 1; })
-      .map(function (e) {
-        return (e.seriesId || e.id) + ' | ' + e.date + ' ' + dLabel(e.date).dow + (e.time ? ' ' + e.time : '') + ' | ' + e.title + (e.place ? ' @ ' + e.place : '') + (e.note ? ' | ' + e.note : '');
-      }).join('\n');
-  }
-  function summary(e) {
-    return longLabel(e.date) + (e.time ? ' ' + GC.fmtTime(e.time) : '') + ' ' + GC.CAT_BY_ID[catOf(e)].emoji + ' ' + e.title + (e.place ? ' @ ' + e.place : '');
-  }
-  function showAsk() {
-    var st = aiStatus();
-    var log = askHistory.map(function (h) { return '<div class="u">' + esc(h.q) + '</div><div class="a">' + esc(h.a) + '</div>'; }).join('');
-    var chg = '';
-    if (pending && (pending.adds.length || pending.updates.length || pending.deletes.length)) {
-      chg = '<div class="chg"><div class="small">PROPOSED CHANGES</div>' +
-        pending.adds.map(function (e) { return '<div class="add">+ ' + esc(summary(e)) + '</div>'; }).join('') +
-        pending.updates.map(function (u) { return '<div class="upd">~ ' + esc(summary(u.before)) + '<br>&nbsp;&nbsp;→ ' + esc(summary(u.after)) + '</div>'; }).join('') +
-        pending.deletes.map(function (e) { return '<div class="del">− ' + esc(summary(e)) + '</div>'; }).join('') +
-        '<div class="actions"><button class="btn grow" type="button" data-act="ask-discard">Discard</button><button class="btn primary" type="button" data-act="ask-apply">Apply</button></div></div>';
-    }
-    openSheet('<h2>Ask</h2>' +
-      (st === 'unsupported' ? '<p>AI needs WebGPU, which this browser doesn\'t offer.</p>' :
-       st === 'none' ? '<p>Set up the on-device AI first.</p><div class="actions"><button class="btn primary" type="button" data-act="ai-setup">Set up AI</button></div>' :
-       (askHistory.length ? '' : '<p>Ask about your calendar or tell it what to change, e.g. "What\'s on next week?", "When did I last see the dentist?", "Move haircut to Sat 11am". Changes wait for your OK. Runs on this iPhone.</p>') +
-       '<div class="chat">' + log + '</div>' + chg +
-       '<div id="aiprog" hidden><div class="small" id="aiprogtxt">Thinking…</div><div class="prog"><div id="aiprogbar"></div></div></div>' +
-       '<textarea id="askq" style="min-height:4.5rem" placeholder="ask or tell"></textarea>' +
-       '<div class="actions"><button class="btn grow" type="button" data-act="ask-new">New</button><button class="btn" type="button" data-act="close">Close</button>' +
-       '<button class="btn primary" type="button" data-act="ask-send">Send</button></div>'));
-    var s = $('sheet'); s.scrollTop = s.scrollHeight;
-  }
-  async function askSend() {
-    var q = ($('askq').value || '').trim();
-    if (!q || askBusy) return;
-    askBusy = true;
-    $('aiprog').hidden = false;
-    $('sheet').querySelectorAll('.actions .btn').forEach(function (b) { b.disabled = true; });
-    try {
-      var m = await ensureAI(progressTo('aiprogbar', 'aiprogtxt'));
-      $('aiprogtxt').textContent = 'Thinking…'; $('aiprogbar').style.width = '100%';
-      var r = await m.ask(q, promptToday(), contextFor(q), askHistory);
-      var p = { adds: [], updates: [], deletes: [] };
-      (r.add || []).forEach(function (a) {
-        if (!GC.fromISOok(a.date) || !a.title) return;
-        var t = (a.time || '').replace('-', '–');
-        p.adds.push({ id: uid(), date: a.date, title: a.title, time: t ? GC.normTime(t) : '', place: a.place || '', note: a.note || '', cat: GC.CAT_BY_ID[a.category] ? a.category : '', src: 'Added by assistant: ' + q, added: new Date().toISOString() });
-      });
-      (r.update || []).forEach(function (u) {
-        var before = items.filter(function (i) { return i.id === (u.id || '').trim(); })[0];
-        if (!before) return;
-        var after = Object.assign({}, before);
-        if (u.date && GC.fromISOok(u.date)) after.date = u.date;
-        if (u.time) after.time = /^none$/i.test(u.time) ? '' : GC.normTime(u.time.replace('-', '–'));
-        if (u.title) after.title = u.title;
-        if (u.place) after.place = u.place;
-        if (u.note) after.note = u.note;
-        if (JSON.stringify(after) !== JSON.stringify(before)) p.updates.push({ before: before, after: after });
-      });
-      (r['delete'] || []).forEach(function (id) {
-        var e = items.filter(function (i) { return i.id === String(id).trim(); })[0];
-        if (e) p.deletes.push(e);
-      });
-      pending = p;
-      askHistory.push({ q: q, a: r.reply || '(no reply)' });
-    } catch (e) {
-      askHistory.push({ q: q, a: 'That didn\'t work (' + (e.message || e) + '). Try again, maybe more simply.' });
-    }
-    askBusy = false;
-    showAsk();
-  }
-  function askApply() {
-    if (!pending) return;
-    var byId = {};
-    pending.updates.forEach(function (u) { byId[u.after.id] = u.after; });
-    var del = {};
-    pending.deletes.forEach(function (e) { del[e.id] = 1; });
-    items = items.filter(function (i) { return !del[i.id]; }).map(function (i) { return byId[i.id] || i; }).concat(pending.adds);
-    persist();
-    askHistory.push({ q: '(apply)', a: 'Done. Your calendar is updated.' });
-    pending = null;
-    refresh(); showAsk();
-  }
-
-  // =====================================================================
-  // Menu: AI, backup, lock, update
+  // Menu: backup, lock, update
   // =====================================================================
   function showMenu() {
     openSheet('<h2>Menu</h2><div class="menu">' +
-      (prefs('aiReady') ? '<button class="btn" type="button" data-act="ai-free">Remove AI model (frees about 1 GB)</button>' : '') +
       '<button class="btn" type="button" data-act="rules">Bills &amp; recurring</button>' +
       '<button class="btn" type="button" data-act="gmail">Gmail: ' + (Gmail.token() ? 'connected (sign out)' : 'sign in') + '</button>' +
       '<button class="btn" type="button" data-act="notify">Evening notification</button>' +
@@ -2441,7 +2067,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 2c673601dacd</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 76d7a853bc15</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2586,7 +2212,6 @@
     saveHidden(); refresh(); jumpToday(false);
   });
   $('add').addEventListener('click', function () { if (tab === 'notes') openNote(null); else showPaste(''); });
-  $('ask').addEventListener('click', showAsk);
   $('more').addEventListener('click', showMenu);
   $('list').addEventListener('click', function (e) {
     if (e.target.closest('[data-open="rules"]')) { showRules(); return; }
@@ -2603,26 +2228,17 @@
     if (id.indexOf('bill-') === 0) { showBill(id); return; }
     showEdit(id);
   });
-  $('scrim').addEventListener('click', function (e) { if (e.target === $('scrim') && !askBusy) { if (noteEd) { noteChanged(); noteEd = null; persist(); } closeSheet(); if (tab === 'notes') renderNotes(); } });
+  $('scrim').addEventListener('click', function (e) { if (e.target === $('scrim')) { if (noteEd) { noteChanged(); noteEd = null; persist(); } closeSheet(); if (tab === 'notes') renderNotes(); } });
   $('sheet').addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
     var act = b.getAttribute('data-act');
     if (act === 'close') closeSheet();
     else if (act === 'parse') { lastPaste = $('paste').value; showConfirm(GC.parseText(lastPaste, new Date()).map(function (d) { d.src = d.src; return d; })); }
-    else if (act === 'ai-read') aiRead();
     else if (act === 'back') showPaste(lastPaste);
     else if (act === 'drop') { var n = +b.getAttribute('data-n'); drafts[n].dropped = true; $('row-' + n).hidden = true; }
     else if (act === 'save-all') saveAll();
     else if (act === 'save-one') saveOne();
     else if (act === 'del') { if (!delArmed) { delArmed = true; b.textContent = 'Tap again to delete'; } else { closeSheet(); removeItem(editing.id); } }
-    else if (act === 'ai-setup') showAISetup();
-    else if (act === 'ai-free') { b.disabled = true; b.textContent = 'Removing…'; aiRemove().then(function () { prefs('aiReady', ''); showMenu(); }, function () { prefs('aiReady', ''); showMenu(); }); }
-    else if (act === 'ai-download') aiDownload();
-    else if (act === 'ai-remove') aiRemove();
-    else if (act === 'ask-send') askSend();
-    else if (act === 'ask-new') { askHistory = []; pending = null; showAsk(); }
-    else if (act === 'ask-apply') askApply();
-    else if (act === 'ask-discard') { pending = null; askHistory.push({ q: '(discard)', a: 'Discarded.' }); showAsk(); }
     else if (act === 'import') showImport();
     else if (act === 'rules') showRules();
     else if (act === 'gmail') showGmail();
@@ -2655,8 +2271,6 @@
     }
     else if (act === 'n-done') { noteChanged(); noteEd = null; persist(); closeSheet(); if (tab === 'notes') renderNotes(); }
     else if (act === 'n-pin') { noteEd.pinned = !noteEd.pinned; b.textContent = noteEd.pinned ? 'Unpin' : '📌 Pin'; noteChanged(); }
-    else if (act === 'n-ai') noteTidy();
-    else if (act === 'n-undo') { if (noteEd && noteEd.prevBody != null) { $('n-body').value = noteEd.prevBody; $('n-title').value = noteEd.prevTitle || ''; noteChanged(); noteMsg('Restored the original.'); } }
     else if (act === 'n-events') { noteChanged(); var txt = $('n-body').value; noteEd = null; persist(); closeSheet(); showPaste(txt); }
     else if (act === 'n-del') {
       if (!noteDelArmed) { noteDelArmed = true; b.textContent = 'Tap again to delete'; }
