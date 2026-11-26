@@ -700,7 +700,7 @@
       if (!list.length && di > 0) continue;
       var dl = dLabel(dd);
       var lab = di === 0 ? 'TODAY' : di === 1 ? 'TMR' : dl.dow + ' ' + dl.day;
-      wk += list.length ? briefRows(list, false, lab) : '<div class="brow dfirst bempty"><span class="dl">' + lab + '</span></div>';
+      wk += list.length ? briefRows(list, false, lab) : '<div class="brow dfirst bempty"><span class="dl">' + lab + '</span><span class="tm">-</span></div>';
       wkCount += list.length;
     }
     html += '<section class="bsec"><h2 class="mbar"><span>EVENTS · NEXT 7 DAYS</span><span class="n">' + wkCount + '</span></h2>' +
@@ -2178,7 +2178,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 295b7c82461e</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 7e06fd455a26</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
