@@ -741,13 +741,11 @@
     // market brief: made once a day at 7am SGT from the NY session headlines
     loadBrief();
     if (BRIEF && BRIEF.items) {
-      var ah = aheadLine();
       html += '<section class="bsec"><h2 class="mbar"><span>MARKET BRIEF · ' + esc((BRIEF.label || '').toUpperCase()) + '</span></h2>' +
         (BRIEF.tone ? '<p class="btone">' + esc(BRIEF.tone) + '</p>' : '') +
         BRIEF.items.map(function (b) {
-          return '<a class="bbul" href="' + esc(b.url) + '" target="_blank" rel="noopener noreferrer"><span class="be">' + b.e + '</span><span class="bt"><b>' + esc(b.label) + '</b> ' + esc(b.t) + ' <span class="bs">' + esc(b.src) + '</span></span></a>';
-        }).join('') +
-        (ah ? '<p class="bahead"><b>AHEAD</b> ' + ah + '</p>' : '') + '</section>';
+          return '<a class="bbul" href="' + esc(b.url) + '" target="_blank" rel="noopener noreferrer"><span class="bdot">•</span><span class="bt"><b>' + esc(b.label) + ':</b> ' + esc(b.t) + ' <span class="bs">(' + esc(b.src) + ')</span></span></a>';
+        }).join('') + '</section>';
     }
 
     // headlines: central banks, then FX/rates/macro, then Singapore
@@ -2131,7 +2129,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 13d4e3076827</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version e47526d47cf3</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
