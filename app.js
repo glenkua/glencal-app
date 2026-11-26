@@ -881,9 +881,19 @@
       '<div class="actions" style="flex-direction:column;align-items:stretch">' +
       '<button class="btn primary" type="button" data-mact="note" data-id="' + esc(id) + '">📝 Save to Notes</button>' +
       '<button class="btn" type="button" data-mact="pin" data-id="' + esc(id) + '">' + (pinned ? 'Unpin' : '📌 Pin') + '</button>' +
-      '<a class="btn" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId || m.id) + '" target="_blank" rel="noopener noreferrer">Open in Gmail</a>' +
+      '<button class="btn" type="button" data-gmail="' + esc(m.threadId || m.id) + '">Open in Gmail</button>' +
       '<button class="btn" type="button" data-act="close">Cancel</button></div>');
   }
+  // Open an email in the Gmail app. Google doesn't document a link to one email, so this uses the app's
+  // "conversation" link (works on some versions); if the app doesn't open within 1.5 s, the web link opens instead.
+  function openInGmail(thread) {
+    var web = 'https://mail.google.com/mail/u/0/#all/' + encodeURIComponent(thread), left = false;
+    var onHide = function () { if (document.hidden) left = true; };
+    document.addEventListener('visibilitychange', onHide);
+    setTimeout(function () { document.removeEventListener('visibilitychange', onHide); if (!left) window.open(web, '_blank', 'noopener'); }, 1500);
+    location.href = 'googlegmail:///cv=' + encodeURIComponent(thread) + '/accountId=1&create-new-tab';
+  }
+  $('sheet').addEventListener('click', function (e) { var g = e.target.closest('[data-gmail]'); if (g) { e.preventDefault(); openInGmail(g.getAttribute('data-gmail')); } });
   var lp = null, lpJust = false;
   function lpStart(e) {
     var el = e.target.closest('[data-mid],[data-bmid]'); if (!el) return;
@@ -1237,7 +1247,7 @@
       '<div class="mnav"><button class="btn" type="button" data-act="m-prev"' + (pos <= 0 ? ' disabled' : '') + '>‹ Newer</button>' +
         '<span class="small">' + (pos >= 0 ? (pos + 1) + ' / ' + order.length + (MAIL.next ? '+' : '') : '') + '</span>' +
         '<button class="btn" type="button" data-act="m-next"' + (pos < 0 || (pos >= order.length - 1 && !MAIL.next) ? ' disabled' : '') + '>Older ›</button></div>' +
-      '<div class="actions"><a class="btn grow" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId || m.id) + '" target="_blank" rel="noopener noreferrer">Open in Gmail</a>' +
+      '<div class="actions"><button class="btn grow" type="button" data-gmail="' + esc(m.threadId || m.id) + '">Open in Gmail</button>' +
       '<button class="btn" type="button" data-act="m-note">Save to Notes</button><button class="btn" type="button" data-act="m-events">Make events</button>' +
       '<button class="btn primary" type="button" data-act="close">Done</button></div>');
     $('sheet').classList.add('mailsheet');
@@ -2168,7 +2178,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 4dd802b2bc9c</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 295b7c82461e</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
