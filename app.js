@@ -742,7 +742,7 @@
     loadBrief();
     if (BRIEF && BRIEF.items) {
       html += '<section class="bsec"><h2 class="mbar"><span>MARKET BRIEF · ' + esc((BRIEF.label || '').toUpperCase()) + '</span></h2>' +
-        (BRIEF.tone ? '<p class="btone">' + esc(BRIEF.tone) + '</p>' : '') +
+        (BRIEF.tone ? '<div class="bbul"><span class="bdot">•</span><span class="bt"><b>Overall:</b> ' + esc(BRIEF.tone.replace(/^([^:]+): /, '$1 — ')) + '</span></div>' : '') +
         BRIEF.items.map(function (b) {
           return '<a class="bbul" href="' + esc(b.url) + '" target="_blank" rel="noopener noreferrer"><span class="bdot">•</span><span class="bt"><b>' + esc(b.label) + ':</b> ' + esc(b.t) + ' <span class="bs">(' + esc(b.src) + ')</span></span></a>';
         }).join('') + '</section>';
@@ -2129,7 +2129,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version e47526d47cf3</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version ff3cd4ddae39</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
