@@ -19,12 +19,16 @@ jobs:
           for f in hist-2y.json hist-5y.json; do git show FETCH_HEAD:$f > $f 2>/dev/null || rm -f $f; done
       - run: python3 tools/fetch_markets.py
       - run: python3 tools/fetch_news.py
+      - name: Daily market brief (made once after 7am SGT, kept for the day)
+        run: |
+          git show FETCH_HEAD:brief.json > brief.json 2>/dev/null || rm -f brief.json
+          python3 tools/make_brief.py
       - name: Restore previous fantasy feed (alerts accumulate)
         run: git show FETCH_HEAD:fantasy.json > fantasy.json 2>/dev/null || rm -f fantasy.json
       - run: python3 tools/fetch_fantasy.py
       - name: Publish to the markets branch (one commit, replaced each run)
         run: |
-          mkdir out && cp markets.json news.json fantasy.json hist-1d.json hist-2y.json hist-5y.json out/ && cd out
+          mkdir out && cp markets.json news.json fantasy.json hist-1d.json hist-2y.json hist-5y.json out/ && (cp brief.json out/ 2>/dev/null || true) && cd out
           git init -q -b markets
           git config user.name "github-actions[bot]"
           git config user.email "41898699+github-actions[bot]@users.noreply.github.com"

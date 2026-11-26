@@ -600,6 +600,22 @@
   }
   var lastSeen = prefs('newsSeen') || '';
   function newsURL() { var u = mktURL(); return u ? u.replace('/markets.json', '/news.json') : null; }
+  var BRIEF = null, briefAt = 0;
+  try { BRIEF = JSON.parse(localStorage.getItem('glencal.brief') || 'null'); } catch (e) {}
+  function loadBrief() {
+    var u = mktURL(); if (!u || Date.now() - briefAt < 15 * 60000) return;
+    briefAt = Date.now();
+    fetch(u.replace('/markets.json', '/brief.json'), { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (d && d.items && (!BRIEF || d.made !== BRIEF.made)) { BRIEF = d; try { localStorage.setItem('glencal.brief', JSON.stringify(d)); } catch (e) {} if (tab === 'brief') renderBrief(); }
+    }, function () {});
+  }
+  function aheadLine() {   // key releases and meetings in the next 3 days, from the ECON calendar
+    var lo = todayISO, hi = GC.iso(GC.addDays(new Date(), 3));
+    var KEY = /(cpi|pce|payroll|non-?farm|nfp|gdp|fomc|rate decision|interest rate|cash rate|monetary policy|unemployment|employment change|retail sales|ism|pmi)/i;
+    var list = financeItems().filter(function (e) { return e.date >= lo && e.date <= hi && (e.kind === 'cb' || KEY.test(e.raw || '')); })
+      .sort(function (a, b) { return (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1; }).slice(0, 4);
+    return list.map(function (e) { var l = dLabel(e.date); return (e.date === todayISO ? 'Today' : l.dow) + (e.time ? ' ' + GC.fmtTime(e.time) : '') + ' <b>' + esc(e.ccy) + '</b> ' + esc((e.raw || '').replace(/\s*\(.*?\)\s*/g, ' ').trim()); }).join(' · ');
+  }
   function loadNews() {
     var url = newsURL(); if (!url || document.hidden) return Promise.resolve();
     return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
@@ -719,6 +735,18 @@
       var f = fmtQ(q);
       return '<div class="bq"><b>' + esc(q.k) + '</b><span class="v">' + f.v + ' <span style="color:var(--' + (f.cls === 'up' ? 'up' : f.cls === 'dn' ? 'red' : 'muted') + ')">' + f.ch + '</span></span></div>';
     }).join('') + '</div>' : '<p class="bnone">Loading prices…</p>') + '</section>';
+
+    // market brief: made once a day at 7am SGT from the NY session headlines
+    loadBrief();
+    if (BRIEF && BRIEF.items) {
+      var ah = aheadLine();
+      html += '<section class="bsec"><h2 class="mbar"><span>MARKET BRIEF · ' + esc((BRIEF.label || '').toUpperCase()) + '</span></h2>' +
+        (BRIEF.tone ? '<p class="btone">' + esc(BRIEF.tone) + '</p>' : '') +
+        BRIEF.items.map(function (b) {
+          return '<a class="bbul" href="' + esc(b.url) + '" target="_blank" rel="noopener noreferrer"><span class="be">' + b.e + '</span><span class="bt"><b>' + esc(b.label) + '</b> ' + esc(b.t) + ' <span class="bs">' + esc(b.src) + '</span></span></a>';
+        }).join('') +
+        (ah ? '<p class="bahead"><b>AHEAD</b> ' + ah + '</p>' : '') + '</section>';
+    }
 
     // headlines: central banks, then FX/rates/macro, then Singapore
     var picks = [];
@@ -2101,7 +2129,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 2465c17d2e63</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 7e6f4ca74396</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
