@@ -344,8 +344,21 @@
     }).join('') + '<button class="chip" type="button" data-wdma="1" aria-pressed="' + !!WL.dma + '">DMA</button></div>';
   }
   function unpack(s) { return s ? s.m.map(function (m, i) { return { t: (s.t0 + m * 60) * 1000, c: s.c[i] }; }) : null; }
+  // Chart history is refreshed every few hours, quotes every 10 minutes: end the line on the live price so the
+  // chart's last value matches the header and the ticker. mode: 'i' intraday, 'd' daily, 'w' weekly bars.
+  function withLive(pts, k, mode) {
+    var q = quote(k);
+    if (!pts || !pts.length || !q || q.price == null || !q.t) return pts;
+    var qt = Date.parse(q.t.replace(' ', 'T') + ':00+08:00'), last = pts[pts.length - 1];
+    if (isNaN(qt)) return pts;
+    var day = function (ms) { return new Date(ms + 6 * 36e5).toISOString().slice(0, 10); };   // bars are stamped at the session start; +6h gives the trading date
+    var same = mode === 'i' ? qt <= last.t + 6e4 : mode === 'd' ? day(qt) === day(last.t) : qt - last.t < 7 * 864e5;
+    if (same) last.c = q.price;
+    else if (qt > last.t) pts.push({ t: qt, c: q.price });
+    return pts;
+  }
   function dailyWithMA(k, file, per) {   // closes with 50/100/200-day averages; weekly points use 10/20/40 weeks
-    var h = HIST[file || 'hist-2y'], d = unpack(h && h.data && h.data.s[k]);
+    var h = HIST[file || 'hist-2y'], d = withLive(unpack(h && h.data && h.data.s[k]), k, per ? 'w' : 'd');
     if (!d) return null;
     MAS.forEach(function (ma) {
       var n = Math.round(ma[0] / (per || 1)), sum = 0;
@@ -360,7 +373,7 @@
       var from = d.length ? d[d.length - 1].t - r[2] * 864e5 : 0;
       return { pts: d.filter(function (p) { return p.t >= from; }), daily: true };
     }
-    var h = HIST[r[1]], pts = unpack(h && h.data && h.data.s[k]);
+    var h = HIST[r[1]], pts = withLive(unpack(h && h.data && h.data.s[k]), k, 'i');
     if (!pts) return null;
     var lvl = {}, d2 = WL.dma ? dailyWithMA(k) : null;   // intraday: today's DMA levels as flat lines
     if (d2 && d2.length) MAS.forEach(function (ma) { lvl[ma[0]] = d2[d2.length - 1]['ma' + ma[0]]; });
@@ -2178,7 +2191,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 7e06fd455a26</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version f4eff68a2f96</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
