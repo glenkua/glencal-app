@@ -398,6 +398,9 @@ main { overflow-x: hidden; max-width: 100vw; }
 .arr .btn { padding: 0.35rem 0.6rem; }
 .f .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
 .note { display: block; color: var(--muted); font-size: 0.9rem; }
+/* calendar: the description stays on one line, cut off with … (tap the entry for the full text) */
+#list .item .note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#list .item .note br { display: none; }
 .dgrp.past .t, .dgrp.past .dc, .dgrp.past .tm { color: var(--muted); }
 .dgrp.past .emo { opacity: 0.55; }
 .dgrp.today { --card: var(--today); box-shadow: inset 2px 0 0 var(--amber); }
