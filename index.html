@@ -161,13 +161,13 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .bkcard b { display: block; color: var(--amber); font-size: 0.85rem; } .bkcard .small { display: block; color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
 .bkcard .bkbtns { display: flex; gap: 0.3rem; flex: none; }   /* events: about three and a half entries with their day labels */
 /* next 7 days: day in its own left column, one row per event */
-.bweek .brow { grid-template-columns: 3.4em 4.7em 1.5em minmax(0, 1fr); column-gap: 0.45rem; align-items: center; padding: 0.38rem 0; border-bottom: 0; }
+.bweek .brow { grid-template-columns: 4em 4.7em 1.5em minmax(0, 1fr); column-gap: 0.45rem; align-items: center; padding: 0.38rem 0; border-bottom: 0; }
 .bweek .brow .tm { white-space: nowrap; }
 .bweek .brow .emo { text-align: center; font-size: 0.95rem; line-height: 1; }
 /* one line per event: no emoji, location or notes (tap the event for those) */
 .bweek .brow .pl2, .bweek .brow .note { display: none; }
 .bweek .brow.dfirst { border-top: 1px solid var(--line); }
-.bweek .brow .dl { color: var(--amber); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; white-space: nowrap; }
+.bweek .brow .dl { color: var(--amber); font-weight: 700; white-space: nowrap; }   /* same size as the time */
 .bweek .brow .cd { display: none; }
 .bweek .bempty { cursor: default; }
 /* title on one line, location on the next; each cut off with … if too long */
