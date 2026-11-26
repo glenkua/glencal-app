@@ -642,10 +642,10 @@
       var c = GC.CAT_BY_ID[catOf(e)];
       var days = Math.round((GC.fromISO(e.date) - GC.fromISO(todayISO)) / 86400000);
       var title = e.finance ? (e.kind === 'cb' ? '<span class="star">★</span> ' : '') + '<b class="ccy">' + esc(e.ccy) + '</b> ' + esc(e.raw)
-        : esc(e.title) + (e.age ? ' (' + e.age + ')' : '') + (e.isDue ? '<span class="due">' + (e.paid ? 'PAID' : 'DUE') + '</span>' : '');
+        : '<span class="tt">' + esc(e.title) + (e.age ? ' (' + e.age + ')' : '') + (e.isDue ? '<span class="due">' + (e.paid ? 'PAID' : 'DUE') + '</span>' : '') + '</span>';
       return '<button type="button" class="brow' + (e.finance && e.kind === 'cb' ? ' cb' : '') + '" data-bid="' + esc(e.id) + '">' +
         '<span class="tm">' + (e.time ? esc(GC.fmtTime(e.time)) : '') + '</span><span class="emo" aria-hidden="true">' + (e.emoji || c.emoji) + '</span>' +
-        '<span class="t">' + title + (e.place ? '<span class="pl"> @ ' + esc(e.place) + '</span>' : '') +
+        '<span class="t">' + title + (e.place ? (e.finance ? '<span class="pl"> @ ' + esc(e.place) + '</span>' : '<span class="pl2">@ ' + esc(e.place) + '</span>') : '') +
         (e.noteHTML ? '<span class="note">' + e.noteHTML + '</span>' : e.note && !e.bill ? '<span class="note">' + esc(e.note) + '</span>' : '') + '</span>' +
         '<span class="cd">' + (econ && days === 1 ? 'TMR' : '') + '</span></button>';
     }).join('');
@@ -666,10 +666,18 @@
     }
 
     // today / tomorrow
-    var today = mineOf(todayISO), tom = mineOf(tmr);
-    html += '<section class="bsec"><h2 class="mbar"><span>TODAY</span><span class="n">' + today.length + '</span></h2>' +
-      (today.length ? briefRows(today) : '<p class="bnone">Nothing scheduled today.</p>');
-    if (tom.length) html += '<div class="bsub">TOMORROW</div>' + briefRows(tom.slice(0, 4)) + (tom.length > 4 ? '<p class="bnone">+' + (tom.length - 4) + ' more</p>' : '');
+    // events: today and the next 6 days, grouped by day; days with nothing are skipped (today always shows)
+    var wk = '', wkCount = 0;
+    for (var di = 0; di < 7; di++) {
+      var dd = GC.iso(GC.addDays(now, di)), list = mineOf(dd);
+      if (!list.length && di > 0) continue;
+      var dl = dLabel(dd);
+      wk += '<div class="bday"><span>' + (di === 0 ? 'TODAY' : di === 1 ? 'TOMORROW' : dl.dow + ' ' + dl.day + ' ' + dl.mon) + '</span></div>' + briefRows(list);
+      wkCount += list.length;
+    }
+    html += '<section class="bsec"><h2 class="mbar"><span>EVENTS · NEXT 7 DAYS</span><span class="n">' + wkCount + '</span></h2>' +
+      '<div class="bscroll bweek">' + wk + '</div>' + (wkCount > 3 ? '<div class="bmore">↓ scroll for more</div>' : '');
+
     html += '</section>';
 
     // mail: latest Primary emails (only while signed in)
@@ -1683,7 +1691,7 @@
               '<span class="dc">' + (k === 0 ? l.day + ' <span class="w">' + l.dow + '</span>' : '') + '</span>' +
               '<span class="tm">' + (i.time ? esc(GC.fmtTime(i.time)) : '') + '</span>' +
               '<span class="emo" aria-hidden="true">' + (i.emoji || c.emoji) + '</span>' +
-              '<span class="t">' + (i.finance ? (i.kind === 'cb' ? '<span class="star">★</span> ' : '') + '<b>' + esc(i.ccy) + '</b> ' + esc(i.raw) + (i.check ? '<span class="pl"> (check)</span>' : '') : esc(i.title) + (i.age ? ' (' + i.age + ')' : '') + (i.recurring ? '<span class="pl"> ↻</span>' : '')) + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.isDue ? '<span class="due">' + (i.paid ? 'PAID' : 'DUE') + '</span>' : '') + (i.place ? '<span class="pl"> @ ' + esc(i.place) + '</span>' : '') +
+              '<span class="t">' + (i.finance ? (i.kind === 'cb' ? '<span class="star">★</span> ' : '') + '<b>' + esc(i.ccy) + '</b> ' + esc(i.raw) + (i.check ? '<span class="pl"> (check)</span>' : '') : '<span class="tt">' + esc(i.title) + (i.age ? ' (' + i.age + ')' : '') + (i.recurring ? '<span class="pl"> ↻</span>' : '') + (i.est ? '<span class="pl"> (est.)</span>' : '') + (i.isDue ? '<span class="due">' + (i.paid ? 'PAID' : 'DUE') + '</span>' : '') + '</span>' + (i.place ? '<span class="pl2">@ ' + esc(i.place) + '</span>' : '')) +
               (i.noteHTML ? '<span class="note">' + i.noteHTML + '</span>' : i.note ? '<span class="note">' + esc(i.note) + '</span>' : '') + '</span>' +
               '<span class="cd">' + (k === 0 && days > 0 ? days + 'D' : '') + '</span></button></li>';
           }).join('') + '</ul>';
@@ -2081,7 +2089,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 0644eaecb2a5</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 2e59c029a8a8</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
