@@ -45,7 +45,8 @@
       return;
     }
     persist.allowWipe = false; lastCounts = c;
-    saving = saving.then(function () { return Vault.save(snap); }).catch(function (e) { notice('Saving failed: ' + e.message); });
+    var keep = persist.keep; persist.keep = false;
+    saving = saving.then(function () { return Vault.save(snap, keep); }).catch(function (e) { notice('Saving failed: ' + e.message); });
   }
   function notice(msg) { var n = $('notice'); n.textContent = msg || ''; n.hidden = !msg; syncHead(); }
 
@@ -874,8 +875,21 @@
     b = e.target.closest('[data-restore]');
     if (b) {
       var pick = restoreList[Number(b.getAttribute('data-restore'))]; if (!pick) return;
-      persist.allowWipe = true; persist();   // keep the current copy in the history first
-      saving.then(function () { closeSheet(); enterApp(pick.data); persist.allowWipe = true; persist(); flashToast('Restored'); });
+      var full = b.getAttribute('data-full') === '1';
+      if (full && !window.confirm('Replace everything (calendar, notes, pinned mail, watchlist) with this copy? Your current data is saved to this list first, so you can undo.')) return;
+      persist.keep = true; persist.allowWipe = true; persist();   // current copy always goes into the history first
+      saving.then(function () {
+        closeSheet();
+        if (full) { enterApp(pick.data); persist.allowWipe = true; persist(); flashToast('Restored'); return; }
+        // add back: calendar entries and bills from the copy that you don't have now; everything else stays as it is
+        var d = pick.data, have = {}, haveR = {}, addI = 0, addR = 0;
+        items.forEach(function (i) { have[i.id] = 1; }); rules.forEach(function (r) { haveR[r.id] = 1; });
+        (d.items || []).forEach(function (i) { if (i && i.id && !have[i.id]) { items.push(i); addI++; } });
+        (d.rules || []).forEach(function (r) { if (r && r.id && !haveR[r.id]) { rules.push(r); addR++; } });
+        Object.keys(d.paid || {}).forEach(function (k) { if (!(k in paid)) paid[k] = d.paid[k]; });
+        persist(); refresh(); if (tab === 'brief') renderBrief();
+        flashToast(addI || addR ? 'Added back ' + addI + ' entries' + (addR ? ' and ' + addR + ' bills/recurring' : '') : 'Nothing missing: you already have everything in that copy');
+      });
       return;
     }
     b = e.target.closest('[data-mact]');
@@ -1811,7 +1825,7 @@
       '<div class="actions"><button class="btn grow" type="button" data-act="close">Cancel</button>' +
       '<button class="btn primary" type="button" data-act="parse">Read dates</button></div>');
     if (prefill) $('paste').value = prefill;
-    setTimeout(function () { $('paste').focus(); }, 50);
+    setTimeout(function () { if ($('paste')) $('paste').focus(); }, 50);
   }
 
   var drafts = [];
@@ -2067,7 +2081,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 439a57c63003</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 0644eaecb2a5</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2250,11 +2264,12 @@
       openSheet('<h2>Restore an earlier copy</h2><p>Loading…</p>');
       Vault.history().then(function (h) {
         restoreList = h;
-        openSheet('<h2>Restore an earlier copy</h2><p class="small">The app keeps up to 20 earlier copies on this iPhone, at least 30 minutes apart. Restoring replaces what you have now; your current copy is kept in this list too.</p>' +
+        openSheet('<h2>Restore an earlier copy</h2><p class="small">The app keeps up to 20 earlier copies on this iPhone, at least 30 minutes apart. <b>Add back</b> returns calendar entries and bills from that copy that you no longer have, and changes nothing else. <b>Replace all</b> swaps everything for that copy. Either way your current data is saved to this list first.</p>' +
           (h.length ? '<div class="catlist">' + h.map(function (x, i) {
             var c = counts(x.data), d = new Date(x.at);
             return '<div><span>' + d.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) +
-              '<br><span class="small">' + c.items + ' entries · ' + c.notes + ' notes · ' + c.pins + ' pinned mail</span></span><button class="btn" type="button" data-restore="' + i + '">Restore</button></div>';
+              '<br><span class="small">' + c.items + ' entries · ' + (x.data.rules || []).length + ' bills/recurring · ' + c.notes + ' notes · ' + c.pins + ' pinned mail</span></span>' +
+              '<span style="display:flex;flex-direction:column;gap:0.25rem"><button class="btn primary" type="button" data-restore="' + i + '">Add back</button><button class="btn" type="button" data-restore="' + i + '" data-full="1">Replace all</button></span></div>';
           }).join('') + '</div>' : '<p>No earlier copies yet. They build up as you use the app.</p>') +
           '<div class="actions"><button class="btn primary" type="button" data-act="close">Close</button></div>');
       }, function (e) { openSheet('<h2>Restore</h2><div class="err">' + esc(e.message || e) + '</div><div class="actions"><button class="btn primary" type="button" data-act="close">Close</button></div>'); });

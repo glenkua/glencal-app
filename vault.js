@@ -104,12 +104,12 @@ var Vault = (function () {
   // Earlier copies: before each save, the previous copy is kept if the newest kept one is over 30 minutes old.
   // Up to 20 copies (roughly the last few days of use), encrypted with the same key.
   var HIST_GAP = 30 * 60000, HIST_MAX = 20;
-  async function writeData(items) {
+  async function writeData(items, keep) {
     var box = await seal(dek, enc.encode(JSON.stringify(items)));
     if (rec.data) {
       rec.hist = rec.hist || [];
       var last = rec.hist[rec.hist.length - 1];
-      if (!last || Date.now() - last.at > HIST_GAP) { rec.hist.push({ at: rec.savedAt || Date.now(), box: rec.data }); if (rec.hist.length > HIST_MAX) rec.hist.shift(); }
+      if (keep || !last || Date.now() - last.at > HIST_GAP) { rec.hist.push({ at: rec.savedAt || Date.now(), box: rec.data }); if (rec.hist.length > HIST_MAX) rec.hist.shift(); }
     }
     rec.data = box; rec.savedAt = Date.now();
     await idbPut(KEY, rec);
@@ -199,9 +199,9 @@ var Vault = (function () {
       if (!rec.data) return [];
       return JSON.parse(dec.decode(await open(dek, rec.data)));
     },
-    save: async function (items) {
+    save: async function (items, keep) {
       if (!dek) throw new Error('LOCKED');
-      await writeData(items);
+      await writeData(items, keep);
     },
     // Next weeks' lines for the evening notification, encrypted with the same key as the entries.
     writeDigest: async function (obj) {
