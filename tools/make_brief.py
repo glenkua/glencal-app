@@ -18,7 +18,7 @@ def load(name):
 asof = (now - timedelta(days=1)).date()
 while asof.weekday() >= 5: asof -= timedelta(days=1)
 old = load("brief.json")
-if not force and (now.hour < 7 or old.get("asof") == asof.isoformat()):
+if not force and old.get("v") == 2 and (now.hour < 7 or old.get("asof") == asof.isoformat()):
     print("keep brief", old.get("asof")); sys.exit(0)
 
 news = load("news.json").get("items", [])
@@ -62,12 +62,23 @@ for key, label, emo, pat in THEMES:
     if len(picked) >= 5: break
 
 # tone, from the moves themselves (words only; the numbers are already on the Brief)
+daily = load("hist-2y.json").get("s", {})
+def closes(k):   # (previous close, close) for the business day the brief covers, from daily bars; falls back to live quotes
+    s = daily.get(k)
+    if s:
+        # Yahoo stamps daily bars at the session start (US stocks ~14:30 UTC, FX ~23:00 UTC the evening before);
+        # shifting by 6 hours puts both on the right trading date
+        days = [((datetime.fromtimestamp(s["t0"] + m * 60, timezone.utc) + timedelta(hours=6)).date(), c) for m, c in zip(s["m"], s["c"])]
+        for i in range(1, len(days)):
+            if days[i][0] == asof: return days[i - 1][1], days[i][1]
+    q = mkt.get(k)
+    return (q.get("prev"), q.get("price")) if q else (None, None)
 def pct(k):
-    q = mkt.get(k)
-    return (q["price"] - q["prev"]) / q["prev"] * 100 if q and q.get("price") and q.get("prev") else None
+    a, b = closes(k)
+    return (b - a) / a * 100 if a and b else None
 def bp(k):
-    q = mkt.get(k)
-    return (q["price"] - q["prev"]) * 100 if q and q.get("price") and q.get("prev") else None
+    a, b = closes(k)
+    return (b - a) * 100 if a and b else None
 def say(v, lo_, hi_, words_):   # words_: (big down, down, flat, up, big up)
     if v is None: return None
     return words_[0] if v <= -hi_ else words_[1] if v <= -lo_ else words_[4] if v >= hi_ else words_[3] if v >= lo_ else words_[2]
@@ -81,9 +92,14 @@ parts = [p for p in [
 score = sum(x for x in [(1 if (spx or 0) > 0.25 else -1 if (spx or 0) < -0.25 else 0), (1 if (dxy or 0) < -0.15 else -1 if (dxy or 0) > 0.15 else 0)])
 mood = "Risk-on" if score >= 1 else "Risk-off" if score <= -1 else "Mixed"
 tone = mood + ": " + ", ".join(parts) + "." if parts else ""
+spx_days = daily.get("SPX")
+if spx_days and not any(((datetime.fromtimestamp(spx_days["t0"] + m * 60, timezone.utc) + timedelta(hours=6)).date() == asof) for m in spx_days["m"]):
+    if (datetime.fromtimestamp(spx_days["t0"] + spx_days["m"][-1] * 60, timezone.utc) + timedelta(hours=6)).date() < asof:
+        tone = "US holiday: stock and bond markets were closed, so moves were thin."   # no S&P bar for that day, and later days exist or none yet
+        gold = None
 if gold is not None and abs(gold) >= 1: tone = tone[:-1] + "; gold " + ("up sharply" if gold > 0 else "down sharply") + "."
 
-out = {"asof": asof.isoformat(), "label": "NY close " + asof.strftime("%a %d %b"), "made": now.strftime("%Y-%m-%d %H:%M"),
+out = {"v": 2, "asof": asof.isoformat(), "label": "NY close " + asof.strftime("%a %d %b"), "made": now.strftime("%Y-%m-%d %H:%M"),
        "tone": tone, "items": picked, "note": "Headlines from the NY session (6pm–7am SGT). Tone from the day's moves."}
 json.dump(out, open("brief.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0)
 print("brief", out["label"], "|", tone, "|", len(picked), "items")
