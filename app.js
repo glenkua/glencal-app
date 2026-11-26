@@ -609,12 +609,12 @@
       if (d && d.items && (!BRIEF || d.made !== BRIEF.made)) { BRIEF = d; try { localStorage.setItem('glencal.brief', JSON.stringify(d)); } catch (e) {} if (tab === 'brief') renderBrief(); }
     }, function () {});
   }
-  function aheadLine() {   // key releases and meetings in the next 3 days, from the ECON calendar
-    var lo = todayISO, hi = GC.iso(GC.addDays(new Date(), 3));
+  function aheadLine() {   // key releases and meetings in the next 7 days (first 4), from the ECON calendar
+    var lo = todayISO, hi = GC.iso(GC.addDays(new Date(), 7));
     var KEY = /(cpi|pce|payroll|non-?farm|nfp|gdp|fomc|rate decision|interest rate|cash rate|monetary policy|unemployment|employment change|retail sales|ism|pmi)/i;
     var list = financeItems().filter(function (e) { return e.date >= lo && e.date <= hi && (e.kind === 'cb' || KEY.test(e.raw || '')); })
       .sort(function (a, b) { return (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1; }).slice(0, 4);
-    return list.map(function (e) { var l = dLabel(e.date); return (e.date === todayISO ? 'Today' : l.dow) + (e.time ? ' ' + GC.fmtTime(e.time) : '') + ' <b>' + esc(e.ccy) + '</b> ' + esc((e.raw || '').replace(/\s*\(.*?\)\s*/g, ' ').trim()); }).join(' · ');
+    return list.map(function (e) { var l = dLabel(e.date); return (e.date === todayISO ? 'Today' : l.dow + ' ' + l.day) + (e.time ? ' ' + GC.fmtTime(e.time) : '') + ' <b>' + esc(e.ccy) + '</b> ' + esc((e.raw || '').replace(/\s*\(.*?\)\s*/g, ' ').trim()); }).join(' · ');
   }
   function loadNews() {
     var url = newsURL(); if (!url || document.hidden) return Promise.resolve();
@@ -2129,7 +2129,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 8bdc412e4fcb</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version de8aa5dbc9a9</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
