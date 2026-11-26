@@ -60,6 +60,7 @@ for key, label, emo, pat in THEMES:
     picked.append({"k": key, "label": label, "e": emo, "t": best["title"].strip()[:140], "src": best["src"], "url": best["url"]})
     used.append(best["url"])
     if len(picked) >= 5: break
+picked = [p for p in picked if p["k"] != "macro"]   # macro stories are left to Headlines
 
 # tone, from the moves themselves (words only; the numbers are already on the Brief)
 daily = load("hist-2y.json").get("s", {})

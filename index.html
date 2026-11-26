@@ -161,7 +161,9 @@ main { padding-left: max(0.6rem, env(safe-area-inset-left, 0px)); padding-right:
 .bkcard b { display: block; color: var(--amber); font-size: 0.85rem; } .bkcard .small { display: block; color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
 .bkcard .bkbtns { display: flex; gap: 0.3rem; flex: none; }   /* events: about three and a half entries with their day labels */
 /* next 7 days: day in its own left column, one row per event */
-.bweek .brow { grid-template-columns: 3.6em 3.9em 1.4em minmax(0, 1fr); column-gap: 0.3rem; border-bottom: 0; }
+.bweek .brow { grid-template-columns: 3.6em 3.9em minmax(0, 1fr); column-gap: 0.3rem; border-bottom: 0; }
+/* one line per event: no emoji, location or notes (tap the event for those) */
+.bweek .brow .emo, .bweek .brow .pl2, .bweek .brow .note { display: none; }
 .bweek .brow.dfirst { border-top: 1px solid var(--line); }
 .bweek .brow .dl { color: var(--amber); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; white-space: nowrap; }
 .bweek .brow .cd { display: none; }
