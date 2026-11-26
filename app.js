@@ -31,13 +31,14 @@
 
   // ---------- saving ----------
   var saving = Promise.resolve();
+  var bkPass = '', lastBackup = 0;
   var NOTE_CATS = ['Impt', 'Work', 'Finance', 'Housing', 'Fitness', 'Car', 'Travel', 'Personal'], noteCats = NOTE_CATS.slice(), noteFilter = 'all';
   var rules = [], paid = {}, calcTape = [], notes = [], mailPins = [], mailSeen = [], seenSet = {};
   var loaded = false, lastCounts = null, restoreList = [];
   function counts(d) { return { items: (d.items || []).length, notes: (d.notes || []).filter(function (n) { return n && (n.title || n.body); }).length, pins: (d.mailPins || []).length }; }
   function persist() {
     if (!loaded) return;   // nothing is saved until your data has finished loading
-    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), mailPins: mailPins, mailSeen: mailSeen.slice(-1500), watch: WL, noteCats: noteCats };
+    var snap = { v: 2, items: items.slice(), rules: rules.slice(), paid: Object.assign({}, paid), calc: calcTape.slice(0, 30), notes: notes.filter(function (n) { return n.title || n.body; }), mailPins: mailPins, mailSeen: mailSeen.slice(-1500), watch: WL, noteCats: noteCats, bkPass: bkPass, lastBackup: lastBackup };
     var c = counts(snap), p = lastCounts;
     // Safety net: a save that would empty a section that had 3 or more entries in one go is held back.
     if (p && ['items', 'notes', 'pins'].some(function (k) { return p[k] >= 3 && c[k] === 0; }) && !persist.allowWipe) {
@@ -165,6 +166,7 @@
     mailPins = data.mailPins || [];
     mailSeen = data.mailSeen || []; seenSet = {}; mailSeen.forEach(function (id) { seenSet[id] = 1; });
     noteCats = Array.isArray(data.noteCats) ? data.noteCats : NOTE_CATS.slice();
+    bkPass = data.bkPass || ''; lastBackup = data.lastBackup || 0;
     WL = data.watch && data.watch.list ? data.watch : JSON.parse(JSON.stringify(WL_DEFAULT)); normWL();
     Tools.setTape(calcTape);
     lastCounts = counts(data); loaded = true; prefs('vaultSeen', '1');
@@ -637,13 +639,14 @@
   // Morning brief: today, the next 24h of ECON, markets, top headlines
   // =====================================================================
   function stamp(d) { return GC.iso(d) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
-  function briefRows(list, econ) {
-    return list.map(function (e) {
+  function briefRows(list, econ, dayLab) {   // dayLab: label for a left-hand day column (shown on the first row only)
+    return list.map(function (e, idx) {
       var c = GC.CAT_BY_ID[catOf(e)];
       var days = Math.round((GC.fromISO(e.date) - GC.fromISO(todayISO)) / 86400000);
       var title = e.finance ? (e.kind === 'cb' ? '<span class="star">★</span> ' : '') + '<b class="ccy">' + esc(e.ccy) + '</b> ' + esc(e.raw)
         : '<span class="tt">' + esc(e.title) + (e.age ? ' (' + e.age + ')' : '') + (e.isDue ? '<span class="due">' + (e.paid ? 'PAID' : 'DUE') + '</span>' : '') + '</span>';
-      return '<button type="button" class="brow' + (e.finance && e.kind === 'cb' ? ' cb' : '') + '" data-bid="' + esc(e.id) + '">' +
+      return '<button type="button" class="brow' + (e.finance && e.kind === 'cb' ? ' cb' : '') + (dayLab != null && idx === 0 ? ' dfirst' : '') + '" data-bid="' + esc(e.id) + '">' +
+        (dayLab != null ? '<span class="dl">' + (idx === 0 ? dayLab : '') + '</span>' : '') +
         '<span class="tm">' + (e.time ? esc(GC.fmtTime(e.time)) : '') + '</span><span class="emo" aria-hidden="true">' + (e.emoji || c.emoji) + '</span>' +
         '<span class="t">' + title + (e.place ? (e.finance ? '<span class="pl"> @ ' + esc(e.place) + '</span>' : '<span class="pl2">@ ' + esc(e.place) + '</span>') : '') +
         (e.noteHTML ? '<span class="note">' + e.noteHTML + '</span>' : e.note && !e.bill ? '<span class="note">' + esc(e.note) + '</span>' : '') + '</span>' +
@@ -666,13 +669,20 @@
     }
 
     // today / tomorrow
+    // weekly backup reminder: shows when the last backup is over 7 days old (or never), unless snoozed today
+    var bkAge = lastBackup ? Math.floor((Date.now() - lastBackup) / 864e5) : null, snooze = +(prefs('bkSnooze') || 0);
+    if ((bkAge === null || bkAge >= 7) && Date.now() - snooze > 20 * 3600e3) {
+      html += '<div class="bkcard"><div><b>🔒 Weekly backup</b><span class="small">' + (bkAge === null ? 'No backup saved yet.' : 'Last backup ' + bkAge + ' days ago.') + ' Save an encrypted copy to iCloud Drive.</span></div>' +
+        '<div class="bkbtns"><button class="btn" type="button" data-act="bk-later">Later</button><button class="btn primary" type="button" data-act="export">Back up</button></div></div>';
+    }
     // events: today and the next 6 days, grouped by day; days with nothing are skipped (today always shows)
     var wk = '', wkCount = 0;
     for (var di = 0; di < 7; di++) {
       var dd = GC.iso(GC.addDays(now, di)), list = mineOf(dd);
       if (!list.length && di > 0) continue;
       var dl = dLabel(dd);
-      wk += '<div class="bday"><span>' + (di === 0 ? 'TODAY' : di === 1 ? 'TOMORROW' : dl.dow + ' ' + dl.day + ' ' + dl.mon) + '</span></div>' + briefRows(list);
+      var lab = di === 0 ? 'TODAY' : di === 1 ? 'TMR' : dl.dow + ' ' + dl.day;
+      wk += list.length ? briefRows(list, false, lab) : '<div class="brow dfirst bempty"><span class="dl">' + lab + '</span></div>';
       wkCount += list.length;
     }
     html += '<section class="bsec"><h2 class="mbar"><span>EVENTS · NEXT 7 DAYS</span><span class="n">' + wkCount + '</span></h2>' +
@@ -739,6 +749,8 @@
   }
   $('brief').addEventListener('click', function (e) {
     if (e.target.closest('[data-bmenu]')) { showMenu(); return; }
+    var bk = e.target.closest('.bkcard [data-act]');
+    if (bk) { if (bk.getAttribute('data-act') === 'export') showExport(); else { prefs('bkSnooze', String(Date.now())); renderBrief(); } return; }
     var bm = e.target.closest('[data-bmid]'); if (bm) { if (!lpJust) openMail(bm.getAttribute('data-bmid')); return; }
     if (e.target.closest('[data-bgo]')) { Gmail.start(); return; }
     var b = e.target.closest('[data-bid]'); if (!b) return;
@@ -940,7 +952,7 @@
       '<button class="btn" type="button" data-act="n-events">Make events</button>' +
       '<button class="btn danger" type="button" data-act="n-del">Delete</button>' +
       '<button class="btn primary" type="button" data-act="n-done">Done</button></div>');
-    if (!id) setTimeout(function () { $('n-body').focus(); }, 60);
+    if (!id) setTimeout(function () { if ($('n-body')) $('n-body').focus(); }, 60);
   }
   function noteChanged() {
     if (!noteEd) return;
@@ -2089,7 +2101,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 2e59c029a8a8</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 2465c17d2e63</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2111,6 +2123,12 @@
     try { var dn = JSON.parse(text != null ? text : $('imp').value); if (dn && Array.isArray(dn.notes)) { var nid = {}; dn.notes.forEach(function (n) { if (n && n.id) nid[n.id] = 1; }); notes = notes.filter(function (n) { return !nid[n.id]; }).concat(dn.notes.filter(function (n) { return n && n.id; })); } } catch (e) {}
     try { var dc = JSON.parse(text != null ? text : $('imp').value); if (dc && Array.isArray(dc.calc) && !calcTape.length) { calcTape = dc.calc.slice(0, 30); Tools.setTape(calcTape); } } catch (e) {}
     if (newRules.length) { var rid = {}; newRules.forEach(function (r) { rid[r.id] = 1; }); rules = rules.filter(function (r) { return !rid[r.id]; }).concat(newRules); }
+    try {   // v3 backups: pinned mail, watchlist and note categories
+      var dx = JSON.parse(text != null ? text : $('imp').value);
+      if (dx && Array.isArray(dx.mailPins)) { var pid = {}; mailPins.forEach(function (m) { pid[m.id] = 1; }); dx.mailPins.forEach(function (m) { if (m && m.id && !pid[m.id]) mailPins.push(m); }); }
+      if (dx && Array.isArray(dx.noteCats)) dx.noteCats.forEach(function (c) { if (noteCats.indexOf(c) < 0) noteCats.push(c); });
+      if (dx && dx.watch && dx.watch.list) { WL = dx.watch; normWL(); }
+    } catch (e) {}
     if (!Array.isArray(list) || (!list.length && !newRules.length)) return showImport('That isn\'t a GlenCal backup. Paste the whole text, starting with [ or {.');
     var clean = list.filter(function (x) { return x && x.title && GC.fromISOok(x.date); }).map(function (x) {
       return { id: x.id || uid(), date: x.date, title: String(x.title), time: x.time || '', place: x.place || '', note: x.note || '', cat: x.cat || '', repeat: REPEAT_NAMES[x.repeat] ? x.repeat : 'none', src: x.src || '', added: x.added || '' };
@@ -2128,7 +2146,7 @@
   }
   function b64(u8) { var s2 = ''; for (var i = 0; i < u8.length; i += 0x8000) s2 += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s2); }
   function unb64(t) { return Uint8Array.from(atob(t), function (c) { return c.charCodeAt(0); }); }
-  function backupJSON() { return JSON.stringify({ v: 2, made: new Date().toISOString(), items: items, rules: rules, paid: paid, notes: notes, calc: calcTape }); }
+  function backupJSON() { return JSON.stringify({ v: 3, made: new Date().toISOString(), items: items, rules: rules, paid: paid, notes: notes, calc: calcTape, mailPins: mailPins, watch: WL, noteCats: noteCats }); }
   async function makeBackup(pass) {
     var plain = backupJSON();
     if (!pass) return plain;
@@ -2143,20 +2161,28 @@
     return new TextDecoder().decode(pt);
   }
   function showExport(msg) {
+    if (bkPass && !msg) {   // password already chosen: one tap
+      openSheet('<h2>Back up to iCloud Drive</h2><p>Tap <b>Save backup</b>, then choose <b>Save to Files</b> → <b>iCloud Drive</b> in the share sheet. The file is encrypted with your backup password.</p>' +
+        '<div class="actions"><button class="btn link grow" type="button" data-act="bk-change">Change password</button><button class="btn" type="button" data-act="close">Cancel</button><button class="btn primary" type="button" data-act="bk-saved">Save backup</button></div>');
+      return;
+    }
     openSheet('<h2>Export backup</h2><p>Choose a password for the backup file. You\'ll need it to restore. It can\'t be recovered if you forget it.</p>' +
       (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
       '<div class="f"><input class="pw" id="bk-p1" type="password" autocomplete="new-password" placeholder="backup password (8+ characters)">' +
       '<input class="pw" id="bk-p2" type="password" autocomplete="new-password" placeholder="type it again"></div>' +
+      '<label class="small" style="display:flex;gap:0.4rem;align-items:center"><input type="checkbox" id="bk-rem" checked> Remember on this iPhone, so weekly backups are one tap (kept inside the encrypted app data)</label>' +
       '<div class="actions"><button class="btn link grow" type="button" data-act="bk-plain">Export without a password (readable)</button>' +
       '<button class="btn" type="button" data-act="close">Cancel</button><button class="btn primary" type="button" data-act="bk-enc">Export</button></div>');
   }
+  function markBackedUp() { lastBackup = Date.now(); persist(); if (tab === 'brief') renderBrief(); }
   async function exportBackup(pass) {
     var text = await makeBackup(pass), name = 'glencal-backup-' + todayISO + (pass ? '' : '-readable') + '.json', file = null;
     try { file = new File([text], name, { type: 'application/json' }); } catch (e) {}
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
       closeSheet();
-      navigator.share({ files: [file] }).catch(function () {});
+      navigator.share({ files: [file] }).then(function () { markBackedUp(); flashToast('Backup saved'); }, function () {});
     } else {
+      markBackedUp();
       openSheet('<h2>Export backup</h2><p>Copy this text and save it somewhere safe.</p><textarea readonly>' + esc(text) + '</textarea>' +
         '<div class="actions"><button class="btn primary" type="button" data-act="close">Done</button></div>');
     }
@@ -2310,14 +2336,17 @@
     else if (act === 'rule-del') { if (b.textContent !== 'Tap again to delete') { b.textContent = 'Tap again to delete'; } else { var rd = b.getAttribute('data-rule'); rules = rules.filter(function (r) { return r.id !== rd; }); persist(); refresh(); showRules(); } }
     else if (act === 'bill-paid') { var bid = b.getAttribute('data-bill'); if (paid[bid]) delete paid[bid]; else paid[bid] = 1; persist(); refresh(); showBill(bid); }
     else if (act === 'hol-toggle') { prefs('holidays', holidaysOn() ? 'off' : 'on'); refresh(); showMenu(); }
-    else if (act === 'do-import') doImport();
+    else if (act === 'do-import') restoreText($('imp').value);
     else if (act === 'paste-import') {
-      if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(function (t) { doImport(t); }, function () { showImport('Couldn\'t read the clipboard. Paste into the box instead.'); });
+      if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(function (t) { restoreText(t); }, function () { showImport('Couldn\'t read the clipboard. Paste into the box instead.'); });
       else showImport('Paste into the box instead.');
     }
     else if (act === 'export') showExport();
     else if (act === 'bk-plain') exportBackup('');
-    else if (act === 'bk-enc') { var p1 = $('bk-p1').value, p2 = $('bk-p2').value; if (p1.length < 8) showExport('Use at least 8 characters.'); else if (p1 !== p2) showExport('The two passwords don\'t match.'); else exportBackup(p1); }
+    else if (act === 'bk-enc') { var p1 = $('bk-p1').value, p2 = $('bk-p2').value; if (p1.length < 8) showExport('Use at least 8 characters.'); else if (p1 !== p2) showExport('The two passwords don\'t match.'); else { if ($('bk-rem').checked) { bkPass = p1; persist(); } exportBackup(p1); } }
+    else if (act === 'bk-saved') exportBackup(bkPass);
+    else if (act === 'bk-change') { bkPass = ''; persist(); showExport(); }
+    else if (act === 'bk-later') { prefs('bkSnooze', String(Date.now())); renderBrief(); }
     else if (act === 'bk-open') { var pw = $('bk-in').value; openBackup(pendingBackup, pw).then(function (t) { pendingBackup = null; doImport(t); }, function () { askBackupPassword('Wrong password, or the file is damaged.'); }); }
     else if (act === 'lock') lockNow();
     else if (act === 'lock-off') { prefs('lock', 'off'); Vault.rekey('device').then(showMenu, function (e) { notice('Could not turn off the lock: ' + e.message); }); }
