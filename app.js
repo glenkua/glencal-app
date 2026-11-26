@@ -166,7 +166,7 @@
     noteCats = Array.isArray(data.noteCats) ? data.noteCats : NOTE_CATS.slice();
     WL = data.watch && data.watch.list ? data.watch : JSON.parse(JSON.stringify(WL_DEFAULT)); normWL();
     Tools.setTape(calcTape);
-    lastCounts = counts(data); loaded = true;
+    lastCounts = counts(data); loaded = true; prefs('vaultSeen', '1');
     unlocked = true;
     todayISO = GC.iso(new Date());
     $('lock').hidden = true;
@@ -2067,7 +2067,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 76d7a853bc15</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 439a57c63003</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
@@ -2308,7 +2308,19 @@
   // =====================================================================
   // Start
   // =====================================================================
+  // Ask the browser to keep this app's storage (reduces the chance iOS clears it when space runs low).
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   Vault.status().then(async function (st) {
+    if (st === 'new' && prefs('vaultSeen') === '1') {   // storage was used before but is now empty: never start over silently
+      lockScreen('<div class="err">Your saved GlenCal data wasn\'t found on this iPhone.</div>' +
+        '<p>This can happen if iOS cleared website data, or the app was removed and added again. Nothing has been changed yet.</p>' +
+        '<p>If you have a backup file (··· → Export backup), restore it now. Otherwise you can start with an empty calendar.</p>' +
+        '<div class="actions" style="flex-direction:column;align-items:stretch"><button class="btn primary" type="button" id="lk-restore">Restore from a backup file</button>' +
+        '<button class="btn" type="button" id="lk-fresh">Start with an empty calendar</button></div>');
+      $('lk-restore').onclick = async function () { await Vault.create('device'); enterApp(await Vault.read()); setTimeout(function () { showImport(); }, 300); };
+      $('lk-fresh').onclick = async function () { if (!window.confirm('Start with an empty calendar? Your old entries can only come back from a backup file.')) return; await Vault.create('device'); enterApp(await Vault.read()); };
+      return;
+    }
     if (st === 'new' && prefs('lock') !== 'on') { await Vault.create('device'); return enterApp(await Vault.read()); }
     if (st === 'new') return showSetup();
     if (Vault.method() === 'device') return enterApp(await Vault.unlock());
