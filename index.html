@@ -102,6 +102,9 @@ input, textarea, select { font-family: var(--mono); }
 .chips.two { display: block; overflow-x: auto; }
 .chips.two .crow { display: flex; gap: 0.3rem; width: max-content; }
 .chips.two .crow + .crow { margin-top: 0.3rem; }
+/* an even grid across the full width (one or two rows) */
+.chips.grid { display: grid; gap: 0.3rem 5px; overflow: visible; }
+.chips.grid .chip { text-align: center; }
 #tchips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.3rem; overflow: visible; }
 #tchips .chip { text-align: center; padding: 0.42rem 0.2rem; }
 .chip { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; flex: none; font-weight: 700; font-size: 0.8rem; line-height: 1; letter-spacing: 0.03em; text-transform: uppercase; color: var(--fg); background: var(--raise); border: 1px solid var(--line); border-radius: 2px; padding: 0.35rem 0.5rem; cursor: pointer; white-space: nowrap; }

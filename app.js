@@ -1298,12 +1298,24 @@
     if (!el || el.hidden || !el.offsetParent) return;
     fitting = true;
     var chips = [].slice.call(el.querySelectorAll('.chip'));
-    if (el.classList.contains('two')) { el.classList.remove('two'); chips.forEach(function (c) { el.appendChild(c); }); [].slice.call(el.querySelectorAll('.crow')).forEach(function (r) { r.remove(); }); }
-    var sl = el.scrollLeft;
-    if (el.scrollWidth > el.clientWidth + 2 && chips.length > 3) {
-      var widths = chips.map(function (c) { return c.getBoundingClientRect().width + 5; }), total = widths.reduce(function (a, b) { return a + b; }, 0), run = 0, cut = 0;
-      for (var i = 0; i < widths.length; i++) { if (run + widths[i] / 2 > total / 2) { cut = i; break; } run += widths[i]; cut = i + 1; }
-      cut = Math.max(1, Math.min(chips.length - 1, cut));
+    // back to one plain line so natural widths can be measured
+    el.classList.remove('two', 'grid'); el.style.gridTemplateColumns = '';
+    chips.forEach(function (c) { el.appendChild(c); });
+    [].slice.call(el.querySelectorAll('.crow')).forEach(function (r) { r.remove(); });
+    var sl = el.scrollLeft, room = el.clientWidth, gap = 5, n = chips.length;
+    var w = chips.map(function (c) { return Math.ceil(c.getBoundingClientRect().width); });
+    function fits(cols) {   // chips laid out row by row in this many columns: does the widest chip of each column fit?
+      var tot = gap * (cols - 1);
+      for (var k = 0; k < cols; k++) { var m = 0; for (var i = k; i < n; i += cols) m = Math.max(m, w[i]); tot += m; }
+      return tot <= room;
+    }
+    var cols = n && fits(n) ? n : n > 3 && fits(Math.ceil(n / 2)) ? Math.ceil(n / 2) : 0;
+    if (cols) {   // even grid across the full width: one row, or two
+      el.classList.add('grid'); el.style.gridTemplateColumns = 'repeat(' + cols + ', auto)';
+    } else if (n > 3) {   // too many for an even grid: two rows that scroll sideways together
+      var total = w.reduce(function (a, b) { return a + b + gap; }, 0), run = 0, cut = 0;
+      for (var i = 0; i < n; i++) { if (run + (w[i] + gap) / 2 > total / 2) { cut = i; break; } run += w[i] + gap; cut = i + 1; }
+      cut = Math.max(1, Math.min(n - 1, cut));
       var r1 = document.createElement('div'), r2 = document.createElement('div');
       r1.className = r2.className = 'crow';
       chips.forEach(function (c, i) { (i < cut ? r1 : r2).appendChild(c); });
@@ -2156,7 +2168,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 88ebec36efc4</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 8b30e4ae815d</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
