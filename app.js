@@ -1289,8 +1289,35 @@
       SC().scrollTop = 0;
     }
     else { showPast = false; render(); jumpToday(false); }
-    syncHead();
+    syncHead(); fitAllChips();
   }
+  // Category bars (Calendar, Mail, Notes, News): when they don't fit on one line, show two rows of
+  // roughly equal width that scroll sideways together.
+  var TWO_ROW = ['chips', 'mchips', 'ntchips', 'nchips'], fitting = false, chipObs = {};
+  function fitChips(el) {
+    if (!el || el.hidden || !el.offsetParent) return;
+    fitting = true;
+    var chips = [].slice.call(el.querySelectorAll('.chip'));
+    if (el.classList.contains('two')) { el.classList.remove('two'); chips.forEach(function (c) { el.appendChild(c); }); [].slice.call(el.querySelectorAll('.crow')).forEach(function (r) { r.remove(); }); }
+    var sl = el.scrollLeft;
+    if (el.scrollWidth > el.clientWidth + 2 && chips.length > 3) {
+      var widths = chips.map(function (c) { return c.getBoundingClientRect().width + 5; }), total = widths.reduce(function (a, b) { return a + b; }, 0), run = 0, cut = 0;
+      for (var i = 0; i < widths.length; i++) { if (run + widths[i] / 2 > total / 2) { cut = i; break; } run += widths[i]; cut = i + 1; }
+      cut = Math.max(1, Math.min(chips.length - 1, cut));
+      var r1 = document.createElement('div'), r2 = document.createElement('div');
+      r1.className = r2.className = 'crow';
+      chips.forEach(function (c, i) { (i < cut ? r1 : r2).appendChild(c); });
+      el.appendChild(r1); el.appendChild(r2); el.classList.add('two'); el.scrollLeft = sl;
+    }
+    if (chipObs[el.id]) chipObs[el.id].takeRecords();   // our own rearranging is not a new render: don't react to it
+    fitting = false;
+  }
+  function fitAllChips() { TWO_ROW.forEach(function (id) { fitChips($(id)); }); }
+  if (window.MutationObserver) TWO_ROW.forEach(function (id) {
+    chipObs[id] = new MutationObserver(function () { if (!fitting) fitChips($(id)); });
+    chipObs[id].observe($(id), { childList: true });
+  });
+  window.addEventListener('resize', fitAllChips);
   $('tab-brief').addEventListener('click', function () { setTab('brief'); });
   $('tab-notes').addEventListener('click', function () { setTab('notes'); });
   $('tab-watch').addEventListener('click', function () { setTab('watch'); });
@@ -2129,7 +2156,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 58759da3f5c4</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 88ebec36efc4</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {

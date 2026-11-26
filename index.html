@@ -98,6 +98,10 @@ input, textarea, select { font-family: var(--mono); }
 .chips { display: flex; gap: 0.3rem; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .chips::-webkit-scrollbar { display: none; }
 /* tools: all eight in two rows of four */
+/* two rows that scroll sideways together (set by fitChips when a bar doesn't fit) */
+.chips.two { display: block; overflow-x: auto; }
+.chips.two .crow { display: flex; gap: 0.3rem; width: max-content; }
+.chips.two .crow + .crow { margin-top: 0.3rem; }
 #tchips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.3rem; overflow: visible; }
 #tchips .chip { text-align: center; padding: 0.42rem 0.2rem; }
 .chip { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; flex: none; font-weight: 700; font-size: 0.8rem; line-height: 1; letter-spacing: 0.03em; text-transform: uppercase; color: var(--fg); background: var(--raise); border: 1px solid var(--line); border-radius: 2px; padding: 0.35rem 0.5rem; cursor: pointer; white-space: nowrap; }
