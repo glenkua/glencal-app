@@ -612,8 +612,10 @@
   function aheadLine() {   // key releases and meetings in the next 7 days (first 4), from the ECON calendar
     var lo = todayISO, hi = GC.iso(GC.addDays(new Date(), 7));
     var KEY = /(cpi|pce|payroll|non-?farm|nfp|gdp|fomc|rate decision|interest rate|cash rate|monetary policy|unemployment|employment change|retail sales|ism|pmi)/i;
-    var list = financeItems().filter(function (e) { return e.date >= lo && e.date <= hi && (e.kind === 'cb' || KEY.test(e.raw || '')); })
-      .sort(function (a, b) { return (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1; }).slice(0, 4);
+    var pick = function (until) { return financeItems().filter(function (e) { return e.date >= lo && e.date <= until && (e.kind === 'cb' || KEY.test(e.raw || '')); })
+      .sort(function (a, b) { return (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1; }); };
+    var list = pick(hi).slice(0, 4);
+    if (list.length < 2) list = pick(GC.iso(GC.addDays(new Date(), 21))).slice(0, 2);   // quiet week: still show the next two key events
     return list.map(function (e) { var l = dLabel(e.date); return (e.date === todayISO ? 'Today' : l.dow + ' ' + l.day) + (e.time ? ' ' + GC.fmtTime(e.time) : '') + ' <b>' + esc(e.ccy) + '</b> ' + esc((e.raw || '').replace(/\s*\(.*?\)\s*/g, ' ').trim()); }).join(' · ');
   }
   function loadNews() {
@@ -2129,7 +2131,7 @@
         ? '<button class="btn" type="button" data-act="lock-on">Turn on Face ID lock</button>'
         : '<button class="btn" type="button" data-act="lock">Lock now</button><button class="btn" type="button" data-act="lock-off">Turn off Face ID lock</button>') +
       (updateReady ? '<button class="btn primary" type="button" data-act="update">Install update</button>' : '') +
-      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version de8aa5dbc9a9</p>' +
+      '</div><p class="small">Entries are encrypted on this iPhone. ' + (Vault.method() === 'device' ? 'Opens without Face ID.' : 'Unlocked with ' + (Vault.method() === 'passkey' ? 'Face ID' : 'a passphrase') + '. Locks after 30 seconds in the background.') + '<br>Version 13d4e3076827</p>' +
       '<div class="actions"><button class="btn" type="button" data-act="close">Close</button></div>');
   }
   function showImport(msg) {
