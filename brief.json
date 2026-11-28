@@ -1,0 +1,50 @@
+{
+"v": 2,
+"asof": "2026-11-27",
+"label": "NY close Fri 27 Nov",
+"made": "2026-11-28 07:24",
+"tone": "Mixed: stocks rallied, Treasuries sold off, dollar firmer, oil steady; gold up sharply.",
+"items": [
+{
+"k": "cb",
+"label": "Central banks",
+"e": "🏛",
+"t": "Vujcic and Kocher Hint at More ECB Rate Hiking, Kurier Reports",
+"src": "BBG",
+"url": "https://www.bloomberg.com/news/articles/2026-11-27/vujcic-and-kocher-hint-at-more-ecb-rate-hiking-kurier-reports"
+},
+{
+"k": "rates",
+"label": "Rates",
+"e": "📉",
+"t": "U.S. Treasury yields rally, snapping eight-day rally as bond bulls pause",
+"src": "INV",
+"url": "https://www.investing.com/news/forex-news/global-bonds-cap-strong-weekly-rally-after-aidriven-flight-to-safety-5053055"
+},
+{
+"k": "fx",
+"label": "FX",
+"e": "💱",
+"t": "Hungary Credit Outlook Lifted by S&P on Budget and Euro Ambition",
+"src": "BBG",
+"url": "https://www.bloomberg.com/news/articles/2026-11-27/hungary-credit-outlook-lifted-by-s-p-on-budget-and-euro-ambition"
+},
+{
+"k": "asiafx",
+"label": "Asia FX",
+"e": "🌏",
+"t": "Colombia Peso Stumbles as Mounting Risks Test Rally",
+"src": "BBG",
+"url": "https://www.bloomberg.com/news/articles/2026-11-27/colombia-peso-stumbles-as-mounting-risks-test-carry-fueled-rally"
+},
+{
+"k": "eq",
+"label": "Equities",
+"e": "📈",
+"t": "Trump’s Nvidia intervention has a cost for US stocks",
+"src": "FT",
+"url": "https://www.ft.com/content/3318a827-bf20-4826-947d-9327381c3c10?syn-25a6b1a6=1"
+}
+],
+"note": "Headlines from the NY session (6pm–7am SGT). Tone from the day's moves."
+}

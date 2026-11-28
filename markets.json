@@ -1,0 +1,616 @@
+{
+"updated": "2026-11-29 03:49",
+"source": "Yahoo Finance (delayed)",
+"items": [
+{
+"k": "USDSGD",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / Singapore dollar",
+"tk": true,
+"price": 1.2903,
+"prev": 1.29,
+"t": "2026-11-28 13:20"
+},
+{
+"k": "EURUSD",
+"kind": "fx",
+"group": "FX",
+"name": "Euro / US dollar",
+"tk": true,
+"price": 1.0939,
+"prev": 1.0975,
+"t": "2026-11-28 06:29"
+},
+{
+"k": "GBPUSD",
+"kind": "fx",
+"group": "FX",
+"name": "Pound / US dollar",
+"tk": true,
+"price": 1.3099,
+"prev": 1.3111,
+"t": "2026-11-28 06:29"
+},
+{
+"k": "USDJPY",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / yen",
+"tk": true,
+"price": 159.515,
+"prev": 159.226,
+"t": "2026-11-28 13:20"
+},
+{
+"k": "AUDUSD",
+"kind": "fx",
+"group": "FX",
+"name": "Aussie / US dollar",
+"tk": true,
+"price": 0.6651,
+"prev": 0.6634,
+"t": "2026-11-28 13:50"
+},
+{
+"k": "SPX",
+"kind": "index",
+"group": "Indices",
+"name": "S&P 500",
+"tk": true,
+"price": 7297.49,
+"prev": 7182.78,
+"t": "2026-11-28 02:38"
+},
+{
+"k": "NDX",
+"kind": "index",
+"group": "Indices",
+"name": "Nasdaq 100",
+"tk": true,
+"price": 26726.389,
+"prev": 26046.896,
+"t": "2026-11-28 03:15"
+},
+{
+"k": "DOW",
+"kind": "index",
+"group": "Indices",
+"name": "Dow Jones",
+"tk": true,
+"price": 50774.94,
+"prev": 50182.95,
+"t": "2026-11-28 02:38"
+},
+{
+"k": "UST 2Y",
+"kind": "yield",
+"group": "Rates",
+"name": "US 2-year yield (CBOT futures)",
+"tk": true,
+"price": 4.75,
+"prev": 4.75,
+"t": "2026-10-14 02:15"
+},
+{
+"k": "UST 5Y",
+"kind": "yield",
+"group": "Rates",
+"name": "US Treasury 5-year yield",
+"tk": true,
+"price": 4.746,
+"prev": 4.66,
+"t": "2026-11-28 03:59"
+},
+{
+"k": "UST 10Y",
+"kind": "yield",
+"group": "Rates",
+"name": "US Treasury 10-year yield",
+"tk": true,
+"price": 4.936,
+"prev": 4.848,
+"t": "2026-11-28 03:59"
+},
+{
+"k": "UST 30Y",
+"kind": "yield",
+"group": "Rates",
+"name": "US Treasury 30-year yield",
+"tk": true,
+"price": 5.325,
+"prev": 5.2349997,
+"t": "2026-11-28 03:59"
+},
+{
+"k": "NZDUSD",
+"kind": "fx",
+"group": "FX",
+"name": "Kiwi / US dollar",
+"tk": false,
+"price": 0.5464,
+"prev": 0.5472,
+"t": "2026-11-29 03:30"
+},
+{
+"k": "USDCHF",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / Swiss franc",
+"tk": false,
+"price": 0.8357,
+"prev": 0.8336,
+"t": "2026-11-28 13:20"
+},
+{
+"k": "USDCAD",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / Canadian dollar",
+"tk": false,
+"price": 1.4248,
+"prev": 1.4241,
+"t": "2026-11-28 13:20"
+},
+{
+"k": "USDCNH",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / offshore yuan",
+"tk": false,
+"price": 6.6542,
+"prev": 6.6587,
+"t": "2026-11-28 05:59"
+},
+{
+"k": "USDHKD",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / Hong Kong dollar",
+"tk": false,
+"price": 7.8297,
+"prev": 7.8361,
+"t": "2026-11-28 13:20"
+},
+{
+"k": "USDKRW",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / Korean won",
+"tk": false,
+"price": 1333.9,
+"prev": 1343.06,
+"t": "2026-11-28 11:30"
+},
+{
+"k": "USDINR",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / Indian rupee",
+"tk": false,
+"price": 92.99,
+"prev": 92.435,
+"t": "2026-11-28 11:30"
+},
+{
+"k": "USDMYR",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / ringgit",
+"tk": false,
+"price": 4.1195,
+"prev": 4.115,
+"t": "2026-11-28 11:30"
+},
+{
+"k": "USDIDR",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / rupiah",
+"tk": false,
+"price": 18295.0,
+"prev": 18303.0,
+"t": "2026-11-28 11:30"
+},
+{
+"k": "USDTHB",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / baht",
+"tk": false,
+"price": 33.89,
+"prev": 34.01,
+"t": "2026-11-28 06:15"
+},
+{
+"k": "USDPHP",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / peso",
+"tk": false,
+"price": 63.69,
+"prev": 63.711,
+"t": "2026-11-28 11:30"
+},
+{
+"k": "USDTWD",
+"kind": "fx",
+"group": "FX",
+"name": "US dollar / Taiwan dollar",
+"tk": false,
+"price": 32.979,
+"prev": 32.918,
+"t": "2026-11-28 06:09"
+},
+{
+"k": "EURSGD",
+"kind": "fx",
+"group": "FX",
+"name": "Euro / Singapore dollar",
+"tk": false,
+"price": 1.4108,
+"prev": 1.415,
+"t": "2026-11-28 13:20"
+},
+{
+"k": "GBPSGD",
+"kind": "fx",
+"group": "FX",
+"name": "Pound / Singapore dollar",
+"tk": false,
+"price": 1.6891,
+"prev": 1.6897,
+"t": "2026-11-28 13:50"
+},
+{
+"k": "AUDSGD",
+"kind": "fx",
+"group": "FX",
+"name": "Aussie / Singapore dollar",
+"tk": false,
+"price": 0.8556,
+"prev": 0.8549,
+"t": "2026-11-28 13:49"
+},
+{
+"k": "SGDJPY",
+"kind": "fx",
+"group": "FX",
+"name": "Singapore dollar / yen",
+"tk": false,
+"price": 123.622,
+"prev": 123.37,
+"t": "2026-11-28 13:50"
+},
+{
+"k": "EURJPY",
+"kind": "fx",
+"group": "FX",
+"name": "Euro / yen",
+"tk": false,
+"price": 174.4,
+"prev": 174.668,
+"t": "2026-11-28 13:20"
+},
+{
+"k": "DXY",
+"kind": "index",
+"group": "FX",
+"name": "US dollar index",
+"tk": false,
+"price": 104.035,
+"prev": 104.014,
+"t": "2026-11-28 05:59"
+},
+{
+"k": "UST 3M",
+"kind": "yield",
+"group": "Rates",
+"name": "US Treasury 3-month yield",
+"tk": false,
+"price": 4.153,
+"prev": 4.1549997,
+"t": "2026-11-28 03:59"
+},
+{
+"k": "RUT",
+"kind": "index",
+"group": "Indices",
+"name": "Russell 2000",
+"tk": false,
+"price": 2750.297,
+"prev": 2704.061,
+"t": "2026-11-28 02:20"
+},
+{
+"k": "VIX",
+"kind": "index",
+"group": "Indices",
+"name": "VIX volatility",
+"tk": false,
+"price": 23.81,
+"prev": 26.8,
+"t": "2026-11-28 02:15"
+},
+{
+"k": "STI",
+"kind": "index",
+"group": "Indices",
+"name": "Straits Times Index",
+"tk": false,
+"price": 4995.23,
+"prev": 4962.64,
+"t": "2026-11-27 17:20"
+},
+{
+"k": "NKY",
+"kind": "index",
+"group": "Indices",
+"name": "Nikkei 225",
+"tk": false,
+"price": 58711.11,
+"prev": 57499.2,
+"t": "2026-11-27 14:45"
+},
+{
+"k": "HSI",
+"kind": "index",
+"group": "Indices",
+"name": "Hang Seng",
+"tk": false,
+"price": 22694.77,
+"prev": 22226.9,
+"t": "2026-11-27 16:09"
+},
+{
+"k": "SHCOMP",
+"kind": "index",
+"group": "Indices",
+"name": "Shanghai Composite",
+"tk": false,
+"price": 3606.487,
+"prev": 3476.88,
+"t": "2026-11-27 15:00"
+},
+{
+"k": "KOSPI",
+"kind": "index",
+"group": "Indices",
+"name": "KOSPI",
+"tk": false,
+"price": 4915.68,
+"prev": 4711.21,
+"t": "2026-11-27 19:05"
+},
+{
+"k": "ASX200",
+"kind": "index",
+"group": "Indices",
+"name": "S&P/ASX 200",
+"tk": false,
+"price": 8833.6,
+"prev": 8763.8,
+"t": "2026-11-27 13:55"
+},
+{
+"k": "FTSE",
+"kind": "index",
+"group": "Indices",
+"name": "FTSE 100",
+"tk": false,
+"price": 10698.81,
+"prev": 10609.3,
+"t": "2026-11-28 00:35"
+},
+{
+"k": "DAX",
+"kind": "index",
+"group": "Indices",
+"name": "DAX",
+"tk": false,
+"price": 25441.24,
+"prev": 25215.52,
+"t": "2026-11-28 01:00"
+},
+{
+"k": "SX5E",
+"kind": "index",
+"group": "Indices",
+"name": "Euro Stoxx 50",
+"tk": false,
+"price": 6089.2,
+"prev": 6014.74,
+"t": "2026-11-28 01:00"
+},
+{
+"k": "XAUUSD",
+"kind": "cmd",
+"group": "Commodities",
+"name": "Gold (front-month futures)",
+"tk": false,
+"price": 3668.5,
+"prev": 3564.6,
+"t": "2026-11-28 03:44"
+},
+{
+"k": "XAGUSD",
+"kind": "cmd",
+"group": "Commodities",
+"name": "Silver (front-month futures)",
+"tk": false,
+"price": 43.702,
+"prev": 40.538,
+"t": "2026-11-28 03:44"
+},
+{
+"k": "WTI",
+"kind": "cmd",
+"group": "Commodities",
+"name": "WTI crude futures",
+"tk": false,
+"price": 83.08,
+"prev": 83.68,
+"t": "2026-11-28 03:44"
+},
+{
+"k": "BRENT",
+"kind": "cmd",
+"group": "Commodities",
+"name": "Brent crude futures",
+"tk": false,
+"price": 90.84,
+"prev": 90.64,
+"t": "2026-11-28 03:44"
+},
+{
+"k": "COPPER",
+"kind": "cmd",
+"group": "Commodities",
+"name": "Copper futures",
+"tk": false,
+"price": 5.6005,
+"prev": 5.4215,
+"t": "2026-11-28 03:44"
+},
+{
+"k": "NATGAS",
+"kind": "cmd",
+"group": "Commodities",
+"name": "Natural gas futures",
+"tk": false,
+"price": 3.491,
+"prev": 3.658,
+"t": "2026-11-28 03:44"
+},
+{
+"k": "BTC",
+"kind": "crypto",
+"group": "Crypto",
+"name": "Bitcoin (USD)",
+"tk": false,
+"price": 59296.91,
+"prev": 59866.066,
+"t": "2026-11-29 03:48"
+},
+{
+"k": "ETH",
+"kind": "crypto",
+"group": "Crypto",
+"name": "Ether (USD)",
+"tk": false,
+"price": 1645.4,
+"prev": 1661.0398,
+"t": "2026-11-29 03:48"
+},
+{
+"k": "DBS",
+"kind": "stock",
+"group": "Stocks",
+"name": "DBS Group",
+"tk": false,
+"price": 66.15,
+"prev": 65.85,
+"t": "2026-11-27 17:14"
+},
+{
+"k": "OCBC",
+"kind": "stock",
+"group": "Stocks",
+"name": "OCBC",
+"tk": false,
+"price": 26.8,
+"prev": 26.61,
+"t": "2026-11-27 17:14"
+},
+{
+"k": "UOB",
+"kind": "stock",
+"group": "Stocks",
+"name": "UOB",
+"tk": false,
+"price": 35.81,
+"prev": 35.44,
+"t": "2026-11-27 17:12"
+},
+{
+"k": "SINGTEL",
+"kind": "stock",
+"group": "Stocks",
+"name": "Singtel",
+"tk": false,
+"price": 4.33,
+"prev": 4.25,
+"t": "2026-11-27 17:15"
+},
+{
+"k": "AAPL",
+"kind": "stock",
+"group": "Stocks",
+"name": "Apple",
+"tk": false,
+"price": 358.54,
+"prev": 355.58,
+"t": "2026-11-28 02:00"
+},
+{
+"k": "MSFT",
+"kind": "stock",
+"group": "Stocks",
+"name": "Microsoft",
+"tk": false,
+"price": 492.85,
+"prev": 489.93,
+"t": "2026-11-28 02:00"
+},
+{
+"k": "NVDA",
+"kind": "stock",
+"group": "Stocks",
+"name": "Nvidia",
+"tk": false,
+"price": 150.49,
+"prev": 149.3,
+"t": "2026-11-28 02:00"
+},
+{
+"k": "GOOGL",
+"kind": "stock",
+"group": "Stocks",
+"name": "Alphabet",
+"tk": false,
+"price": 274.96,
+"prev": 273.1,
+"t": "2026-11-28 02:00"
+},
+{
+"k": "AMZN",
+"kind": "stock",
+"group": "Stocks",
+"name": "Amazon",
+"tk": false,
+"price": 254.12,
+"prev": 244.43,
+"t": "2026-11-28 02:00"
+},
+{
+"k": "META",
+"kind": "stock",
+"group": "Stocks",
+"name": "Meta",
+"tk": false,
+"price": 628.96,
+"prev": 609.89,
+"t": "2026-11-28 02:00"
+},
+{
+"k": "TSLA",
+"kind": "stock",
+"group": "Stocks",
+"name": "Tesla",
+"tk": false,
+"price": 400.0,
+"prev": 380.14,
+"t": "2026-11-28 02:00"
+}
+]
+}
